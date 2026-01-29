@@ -58,28 +58,60 @@ mkdir -p "$INSTALL_DIR"
 echo "[5/8] Downloading TShock $TSHOCK_VERSION..."
 cd /tmp
 
-if [ "$TSHOCK_VERSION" = "latest" ]; then
-    DOWNLOAD_URL=$(curl -s https://api.github.com/repos/Pryaxis/TShock/releases/latest | jq -r '.assets[] | select(.name | contains("linux")) | .browser_download_url' | head -1)
-else
-    DOWNLOAD_URL="https://github.com/Pryaxis/TShock/releases/download/${TSHOCK_VERSION}/TShock-5.2-for-Terraria-1.4.4.9-linux-x64-Release.zip"
+# Get latest release URL from GitHub API
+DOWNLOAD_URL=$(curl -s https://api.github.com/repos/Pryaxis/TShock/releases/latest | jq -r '.assets[] | select(.name | contains("linux")) | .browser_download_url' | head -1)
+
+if [ -z "$DOWNLOAD_URL" ]; then
+    echo "Error: Could not find TShock download URL"
+    exit 1
 fi
 
 echo "Downloading from: $DOWNLOAD_URL"
-wget -q --show-progress -O tshock.zip "$DOWNLOAD_URL"
+wget -q --show-progress -O tshock-download.zip "$DOWNLOAD_URL"
 
 # Extract server files
 echo "[6/8] Extracting TShock files..."
 rm -rf tshock-extract
-unzip -o tshock.zip -d tshock-extract
+mkdir -p tshock-extract
+unzip -o tshock-download.zip -d tshock-extract
 
-if [ -d "tshock-extract/TShock-5.2-for-Terraria-1.4.4.9-linux-x64-Release" ]; then
-    cp -r tshock-extract/TShock-5.2-for-Terraria-1.4.4.9-linux-x64-Release/* "$INSTALL_DIR/"
+# Handle .tar inside .zip (new TShock packaging)
+TAR_FILE=$(find tshock-extract -name "*.tar" -type f 2>/dev/null | head -1)
+if [ -n "$TAR_FILE" ]; then
+    echo "Found tar archive: $TAR_FILE"
+    tar -xf "$TAR_FILE" -C "$INSTALL_DIR/"
 else
-    cp -r tshock-extract/* "$INSTALL_DIR/"
+    # Old style: files directly in zip or in subdirectory
+    SUBDIR=$(find tshock-extract -maxdepth 1 -type d -name "TShock*" | head -1)
+    if [ -n "$SUBDIR" ]; then
+        cp -r "$SUBDIR"/* "$INSTALL_DIR/"
+    else
+        cp -r tshock-extract/* "$INSTALL_DIR/"
+    fi
 fi
 
-chmod +x "$INSTALL_DIR/TShock.Server"
-rm -rf tshock.zip tshock-extract
+# Find and make server executable
+SERVER_BIN=$(find "$INSTALL_DIR" -name "TShock.Server" -type f 2>/dev/null | head -1)
+if [ -z "$SERVER_BIN" ]; then
+    SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer.bin.x86_64" -type f 2>/dev/null | head -1)
+fi
+if [ -z "$SERVER_BIN" ]; then
+    SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer" -type f -executable 2>/dev/null | head -1)
+fi
+
+if [ -n "$SERVER_BIN" ]; then
+    chmod +x "$SERVER_BIN"
+    echo "Server binary: $SERVER_BIN"
+    # Save path for systemd service
+    echo "$SERVER_BIN" > "$INSTALL_DIR/.server_bin"
+else
+    echo "ERROR: Could not find server binary!"
+    echo "Contents of $INSTALL_DIR:"
+    ls -la "$INSTALL_DIR/"
+    exit 1
+fi
+
+rm -rf tshock-download.zip tshock-extract
 
 # Create directories
 mkdir -p "$INSTALL_DIR/worlds"
@@ -287,6 +319,10 @@ chmod 600 "$INSTALL_DIR/admin/.env"
 
 # Create systemd service for TShock
 echo "[8/8] Creating systemd services..."
+
+# Read server binary path
+SERVER_BIN=$(cat "$INSTALL_DIR/.server_bin")
+
 cat > /etc/systemd/system/terraria.service << EOF
 [Unit]
 Description=TShock Terraria Server
@@ -297,7 +333,7 @@ Type=simple
 User=$SERVER_USER
 WorkingDirectory=$INSTALL_DIR
 Environment=DOTNET_ROOT=/usr/share/dotnet
-ExecStart=$INSTALL_DIR/TShock.Server -config $INSTALL_DIR/serverconfig.txt
+ExecStart=$SERVER_BIN -config $INSTALL_DIR/serverconfig.txt
 ExecStop=/bin/kill -SIGINT \$MAINPID
 Restart=on-failure
 RestartSec=10
