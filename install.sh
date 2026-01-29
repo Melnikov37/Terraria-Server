@@ -170,6 +170,13 @@ elif [ "$CURRENT_TYPE" != "$SERVER_TYPE" ]; then
 fi
 
 if [ "$NEED_DOWNLOAD" = true ]; then
+    # Stop server if running (to avoid "Text file busy" error)
+    if systemctl is-active --quiet terraria 2>/dev/null; then
+        echo "Stopping server for update..."
+        systemctl stop terraria
+        sleep 2
+    fi
+
     cd /tmp
     rm -rf server-extract server-download.*
 
