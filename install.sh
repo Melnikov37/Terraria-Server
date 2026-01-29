@@ -44,25 +44,33 @@ else
 fi
 
 # ============================================================
-# STEP 2: Install .NET Runtime
+# STEP 2: Install .NET Runtime (6.0 required for TShock)
 # ============================================================
 echo "[2/8] Checking .NET Runtime..."
 
-if ! command -v dotnet &> /dev/null; then
-    echo "Installing .NET Runtime..."
-    wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
-    chmod +x /tmp/dotnet-install.sh
-    /tmp/dotnet-install.sh --channel 8.0 --runtime dotnet --install-dir /usr/share/dotnet
-    ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet
+wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
+chmod +x /tmp/dotnet-install.sh
 
-    if [ ! -f /etc/profile.d/dotnet.sh ]; then
-        echo "export DOTNET_ROOT=/usr/share/dotnet" > /etc/profile.d/dotnet.sh
-    fi
-    export DOTNET_ROOT=/usr/share/dotnet
-    rm -f /tmp/dotnet-install.sh
+# Check if .NET 6.0 is installed (required for TShock)
+if ! dotnet --list-runtimes 2>/dev/null | grep -q "Microsoft.NETCore.App 6.0"; then
+    echo "Installing .NET 6.0 Runtime (required for TShock)..."
+    /tmp/dotnet-install.sh --channel 6.0 --runtime dotnet --install-dir /usr/share/dotnet
 else
-    echo ".NET Runtime already installed: $(dotnet --version 2>/dev/null || echo 'unknown version')"
+    echo ".NET 6.0 already installed"
 fi
+
+# Ensure dotnet is in PATH
+ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet 2>/dev/null || true
+
+if [ ! -f /etc/profile.d/dotnet.sh ]; then
+    echo "export DOTNET_ROOT=/usr/share/dotnet" > /etc/profile.d/dotnet.sh
+fi
+export DOTNET_ROOT=/usr/share/dotnet
+
+rm -f /tmp/dotnet-install.sh
+
+echo "Installed .NET runtimes:"
+dotnet --list-runtimes 2>/dev/null || echo "  (none found)"
 
 # ============================================================
 # STEP 3: Create server user
