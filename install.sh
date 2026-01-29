@@ -428,26 +428,34 @@ else
     echo "Exists: terraria-admin.service"
 fi
 
-# Sudoers - always update to ensure correct permissions
+# Sudoers - allow terraria user to run systemctl for terraria services
 echo "Updating sudoers configuration..."
-cat > /etc/sudoers.d/terraria << EOF
-# Allow terraria user to manage terraria services without password
-$SERVER_USER ALL=(ALL) NOPASSWD: /bin/systemctl start terraria
-$SERVER_USER ALL=(ALL) NOPASSWD: /bin/systemctl stop terraria
-$SERVER_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart terraria
-$SERVER_USER ALL=(ALL) NOPASSWD: /bin/systemctl status terraria
-$SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start terraria
-$SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop terraria
-$SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart terraria
-$SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl status terraria
-EOF
+cat > /etc/sudoers.d/terraria << 'SUDOERS'
+# Allow terraria user to manage services without password
+terraria ALL=(ALL) NOPASSWD: /usr/bin/systemctl start terraria
+terraria ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop terraria
+terraria ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart terraria
+terraria ALL=(ALL) NOPASSWD: /usr/bin/systemctl status terraria
+terraria ALL=(ALL) NOPASSWD: /usr/bin/systemctl start terraria.service
+terraria ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop terraria.service
+terraria ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart terraria.service
+terraria ALL=(ALL) NOPASSWD: /usr/bin/systemctl status terraria.service
+terraria ALL=(ALL) NOPASSWD: /bin/systemctl start terraria
+terraria ALL=(ALL) NOPASSWD: /bin/systemctl stop terraria
+terraria ALL=(ALL) NOPASSWD: /bin/systemctl restart terraria
+terraria ALL=(ALL) NOPASSWD: /bin/systemctl status terraria
+terraria ALL=(ALL) NOPASSWD: /bin/systemctl start terraria.service
+terraria ALL=(ALL) NOPASSWD: /bin/systemctl stop terraria.service
+terraria ALL=(ALL) NOPASSWD: /bin/systemctl restart terraria.service
+terraria ALL=(ALL) NOPASSWD: /bin/systemctl status terraria.service
+SUDOERS
 chmod 440 /etc/sudoers.d/terraria
 # Validate sudoers syntax
-if visudo -c -f /etc/sudoers.d/terraria; then
+if visudo -c -f /etc/sudoers.d/terraria 2>/dev/null; then
     echo "Updated: sudoers.d/terraria (validated)"
 else
     echo "ERROR: sudoers syntax error!"
-    rm -f /etc/sudoers.d/terraria
+    cat /etc/sudoers.d/terraria
 fi
 
 # Reload systemd if needed

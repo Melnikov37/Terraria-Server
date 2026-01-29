@@ -19,6 +19,9 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'change-me-in-production')
+app.config['SESSION_COOKIE_SECURE'] = False
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
 
 # Configuration
 TERRARIA_DIR = os.environ.get('TERRARIA_DIR', '/opt/terraria')
@@ -90,7 +93,7 @@ def get_server_status():
     # Check systemd service
     try:
         result = subprocess.run(
-            ['systemctl', 'is-active', SERVICE_NAME],
+            ['/usr/bin/systemctl', 'is-active', SERVICE_NAME],
             capture_output=True, text=True, timeout=5
         )
         service_running = result.stdout.strip() == 'active'
@@ -322,14 +325,16 @@ def server_control(action):
         return redirect(url_for('dashboard'))
 
     try:
+        # Use full paths and .service suffix for sudoers compatibility
         result = subprocess.run(
-            ['sudo', 'systemctl', action, SERVICE_NAME],
-            capture_output=True, text=True, timeout=30
+            ['/usr/bin/sudo', '/usr/bin/systemctl', action, f'{SERVICE_NAME}.service'],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, 'PATH': '/usr/bin:/bin'}
         )
         if result.returncode == 0:
             flash(f'Server {action}ed', 'success')
         else:
-            flash(f'Error: {result.stderr}', 'error')
+            flash(f'Error: {result.stderr or result.stdout}', 'error')
     except Exception as e:
         flash(f'Error: {e}', 'error')
 
