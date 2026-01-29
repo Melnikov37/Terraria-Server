@@ -379,6 +379,21 @@ systemctl daemon-reload
 systemctl enable terraria
 systemctl enable terraria-admin
 
+# Allow terraria user to control services without password
+echo "Configuring sudo permissions..."
+cat > /etc/sudoers.d/terraria << EOF
+# Allow terraria user to manage terraria services without password
+$SERVER_USER ALL=(ALL) NOPASSWD: /bin/systemctl start terraria
+$SERVER_USER ALL=(ALL) NOPASSWD: /bin/systemctl stop terraria
+$SERVER_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart terraria
+$SERVER_USER ALL=(ALL) NOPASSWD: /bin/systemctl status terraria
+$SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start terraria
+$SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop terraria
+$SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart terraria
+$SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl status terraria
+EOF
+chmod 440 /etc/sudoers.d/terraria
+
 echo ""
 echo "=========================================="
 echo "    Installation Complete!"
