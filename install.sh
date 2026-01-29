@@ -358,7 +358,8 @@ fi
 # ============================================================
 echo "[7/8] Checking Python environment and admin files..."
 
-if [ -d "$SCRIPT_DIR/admin" ]; then
+# Copy admin files only if source != destination
+if [ -d "$SCRIPT_DIR/admin" ] && [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
     find "$SCRIPT_DIR/admin" -maxdepth 1 -type f ! -name ".env" -exec cp {} "$INSTALL_DIR/admin/" \;
     cp -r "$SCRIPT_DIR/admin/templates/"* "$INSTALL_DIR/admin/templates/" 2>/dev/null || true
     echo "Updated admin panel files"
@@ -375,13 +376,15 @@ else
     "$INSTALL_DIR/admin/venv/bin/pip" install -q --upgrade flask gunicorn requests python-dotenv 2>/dev/null || true
 fi
 
-# Copy scripts
-for script in update.sh switch-server.sh; do
-    if [ -f "$SCRIPT_DIR/$script" ]; then
-        cp "$SCRIPT_DIR/$script" "$INSTALL_DIR/$script"
-        chmod +x "$INSTALL_DIR/$script"
-    fi
-done
+# Copy scripts only if source != destination
+if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
+    for script in update.sh; do
+        if [ -f "$SCRIPT_DIR/$script" ]; then
+            cp "$SCRIPT_DIR/$script" "$INSTALL_DIR/$script"
+            chmod +x "$INSTALL_DIR/$script"
+        fi
+    done
+fi
 
 chown -R "$SERVER_USER:$SERVER_USER" "$INSTALL_DIR"
 
