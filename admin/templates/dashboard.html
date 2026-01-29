@@ -27,8 +27,11 @@
         <span style="font-size: 1.2rem; font-weight: 500;">
             {{ 'Online' if status.online else 'Offline' }}
         </span>
-        {% if status.online %}
-            <span class="badge badge-success" style="margin-left: 15px;">{{ status.version }}</span>
+        <span class="badge {{ 'badge-success' if status.server_type == 'tshock' else 'badge-warning' }}" style="margin-left: 15px;">
+            {{ status.server_type|upper }}
+        </span>
+        {% if status.version %}
+            <span class="badge badge-success" style="margin-left: 10px;">{{ status.version }}</span>
         {% endif %}
     </div>
 

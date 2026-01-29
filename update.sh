@@ -1,12 +1,13 @@
 #!/bin/bash
 
-# TShock Auto-Update Script
-# Checks for new version and updates if available
+# Terraria Server Auto-Update Script
+# Supports both TShock and Vanilla servers
 
 set -e
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/terraria}"
-VERSION_FILE="$INSTALL_DIR/.tshock_version"
+VERSION_FILE="$INSTALL_DIR/.server_version"
+TYPE_FILE="$INSTALL_DIR/.server_type"
 FORCE_UPDATE=false
 
 # Parse arguments
@@ -14,25 +15,46 @@ if [ "$1" = "--force" ] || [ "$1" = "-f" ]; then
     FORCE_UPDATE=true
 fi
 
-echo "=== TShock Update Check ==="
+echo "=== Terraria Server Update Check ==="
 
-# Get current installed version
+# Get server type
+SERVER_TYPE="tshock"
+if [ -f "$TYPE_FILE" ]; then
+    SERVER_TYPE=$(cat "$TYPE_FILE")
+fi
+echo "Server type: $SERVER_TYPE"
+
+# Get current version
 CURRENT_VERSION=""
 if [ -f "$VERSION_FILE" ]; then
     CURRENT_VERSION=$(cat "$VERSION_FILE")
 fi
 echo "Current version: ${CURRENT_VERSION:-unknown}"
 
-# Get latest version from GitHub
-echo "Checking GitHub for latest release..."
-LATEST_RELEASE=$(curl -s https://api.github.com/repos/Pryaxis/TShock/releases/latest)
-LATEST_VERSION=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
-DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets[] | select(.name | contains("linux")) | .browser_download_url' | head -1)
+# Get latest version
+echo "Checking for updates..."
+
+if [ "$SERVER_TYPE" = "tshock" ]; then
+    RELEASE_INFO=$(curl -s https://api.github.com/repos/Pryaxis/TShock/releases/latest)
+    LATEST_VERSION=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
+    DOWNLOAD_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | contains("linux")) | .browser_download_url' | head -1)
+else
+    # Vanilla server
+    DOWNLOAD_PAGE=$(curl -s "https://terraria.org/api/get/dedicated-servers-names")
+    LATEST_FILE=$(echo "$DOWNLOAD_PAGE" | jq -r '.[0]' 2>/dev/null || echo "")
+    if [ -n "$LATEST_FILE" ]; then
+        VERSION_NUM=$(echo "$LATEST_FILE" | grep -oP '\d+' | head -1)
+        LATEST_VERSION="1.4.5.${VERSION_NUM: -1}"
+        DOWNLOAD_URL="https://terraria.org/api/download/pc-dedicated-server/$LATEST_FILE"
+    else
+        LATEST_VERSION="unknown"
+    fi
+fi
 
 echo "Latest version: $LATEST_VERSION"
 
-if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
-    echo "Error: Could not fetch latest version from GitHub"
+if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ] || [ "$LATEST_VERSION" = "unknown" ]; then
+    echo "Error: Could not fetch latest version"
     exit 1
 fi
 
@@ -56,42 +78,59 @@ if systemctl is-active --quiet terraria 2>/dev/null; then
     sleep 2
 fi
 
-# Backup current installation
+# Backup
 BACKUP_DIR="$INSTALL_DIR/backups/$(date +%Y%m%d_%H%M%S)"
 echo "Creating backup: $BACKUP_DIR"
 mkdir -p "$BACKUP_DIR"
-cp -r "$INSTALL_DIR/ServerPlugins" "$BACKUP_DIR/" 2>/dev/null || true
+if [ "$SERVER_TYPE" = "tshock" ]; then
+    cp -r "$INSTALL_DIR/ServerPlugins" "$BACKUP_DIR/" 2>/dev/null || true
+    cp -r "$INSTALL_DIR/tshock" "$BACKUP_DIR/" 2>/dev/null || true
+fi
 cp "$INSTALL_DIR/.server_bin" "$BACKUP_DIR/" 2>/dev/null || true
+cp "$INSTALL_DIR/.server_version" "$BACKUP_DIR/" 2>/dev/null || true
 
-# Download new version
-echo "Downloading TShock $LATEST_VERSION..."
+# Download
+echo "Downloading $SERVER_TYPE $LATEST_VERSION..."
 cd /tmp
-rm -rf tshock-update tshock-update.zip
-wget -q --show-progress -O tshock-update.zip "$DOWNLOAD_URL"
+rm -rf server-update server-update.zip
+wget -q --show-progress -O server-update.zip "$DOWNLOAD_URL"
 
 # Extract
 echo "Extracting..."
-mkdir -p tshock-update
-unzip -o tshock-update.zip -d tshock-update
+mkdir -p server-update
+unzip -o server-update.zip -d server-update
 
-# Handle .tar inside .zip
-TAR_FILE=$(find tshock-update -name "*.tar" -type f 2>/dev/null | head -1)
-if [ -n "$TAR_FILE" ]; then
-    echo "Extracting tar archive..."
-    tar -xf "$TAR_FILE" -C "$INSTALL_DIR/"
-else
-    SUBDIR=$(find tshock-update -maxdepth 1 -type d -name "TShock*" | head -1)
-    if [ -n "$SUBDIR" ]; then
-        cp -r "$SUBDIR"/* "$INSTALL_DIR/"
+if [ "$SERVER_TYPE" = "tshock" ]; then
+    # Handle .tar inside .zip for TShock
+    TAR_FILE=$(find server-update -name "*.tar" -type f 2>/dev/null | head -1)
+    if [ -n "$TAR_FILE" ]; then
+        tar -xf "$TAR_FILE" -C "$INSTALL_DIR/"
     else
-        cp -r tshock-update/* "$INSTALL_DIR/"
+        SUBDIR=$(find server-update -maxdepth 1 -type d -name "TShock*" | head -1)
+        if [ -n "$SUBDIR" ]; then
+            cp -r "$SUBDIR"/* "$INSTALL_DIR/"
+        else
+            cp -r server-update/* "$INSTALL_DIR/"
+        fi
     fi
-fi
 
-# Find and set server binary
-SERVER_BIN=$(find "$INSTALL_DIR" -name "TShock.Server" -type f 2>/dev/null | head -1)
-[ -z "$SERVER_BIN" ] && SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer.bin.x86_64" -type f 2>/dev/null | head -1)
-[ -z "$SERVER_BIN" ] && SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer" -type f -executable 2>/dev/null | head -1)
+    SERVER_BIN=$(find "$INSTALL_DIR" -name "TShock.Server" -type f 2>/dev/null | head -1)
+    [ -z "$SERVER_BIN" ] && SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer.bin.x86_64" -type f 2>/dev/null | head -1)
+else
+    # Vanilla server
+    LINUX_DIR=$(find server-update -type d -name "Linux" | head -1)
+    if [ -n "$LINUX_DIR" ]; then
+        cp -r "$LINUX_DIR"/* "$INSTALL_DIR/"
+    else
+        NUMERIC_DIR=$(find server-update -maxdepth 1 -type d -regex '.*/[0-9]+' | head -1)
+        if [ -n "$NUMERIC_DIR" ] && [ -d "$NUMERIC_DIR/Linux" ]; then
+            cp -r "$NUMERIC_DIR/Linux"/* "$INSTALL_DIR/"
+        fi
+    fi
+
+    SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer.bin.x86_64" -type f 2>/dev/null | head -1)
+    [ -z "$SERVER_BIN" ] && SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer" -type f 2>/dev/null | head -1)
+fi
 
 if [ -n "$SERVER_BIN" ]; then
     chmod +x "$SERVER_BIN"
@@ -109,7 +148,7 @@ echo "$LATEST_VERSION" > "$VERSION_FILE"
 chown -R terraria:terraria "$INSTALL_DIR"
 
 # Cleanup
-rm -rf /tmp/tshock-update /tmp/tshock-update.zip
+rm -rf /tmp/server-update /tmp/server-update.zip
 
 echo ""
 echo "Update complete: $LATEST_VERSION"

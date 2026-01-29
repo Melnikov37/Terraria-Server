@@ -117,8 +117,21 @@
 </div>
 
 <div class="card">
-    <div class="card-title">TShock Version</div>
+    <div class="card-title">Server Version</div>
     <table class="table">
+        <tr>
+            <td>Server Type</td>
+            <td>
+                <span class="badge {{ 'badge-success' if version.server_type == 'tshock' else 'badge-warning' }}">
+                    {{ version.server_type|upper }}
+                </span>
+                {% if version.server_type == 'tshock' %}
+                    <span style="color: var(--text-muted); margin-left: 10px;">Terraria 1.4.4.9</span>
+                {% else %}
+                    <span style="color: var(--text-muted); margin-left: 10px;">Latest Terraria</span>
+                {% endif %}
+            </td>
+        </tr>
         <tr>
             <td>Current Version</td>
             <td><code>{{ version.current }}</code></td>
@@ -134,15 +147,15 @@
         </tr>
     </table>
     <div style="margin-top: 15px;">
-        <form method="POST" action="{{ url_for('update_server') }}" class="inline-form" onsubmit="return confirm('This will update TShock and restart the server. Continue?');">
+        <form method="POST" action="{{ url_for('update_server') }}" class="inline-form" onsubmit="return confirm('This will update the server and restart. Continue?');">
             <button type="submit" class="btn {{ 'btn-warning' if version.update_available else 'btn-secondary' }}">
                 {{ 'Update Now' if version.update_available else 'Force Update' }}
             </button>
         </form>
-        <span style="color: var(--text-muted); margin-left: 15px; font-size: 0.9rem;">
-            Auto-updates daily at 4 AM
-        </span>
     </div>
+    <p style="margin-top: 15px; color: var(--text-muted); font-size: 0.9rem;">
+        Switch server type via SSH: <code>sudo /opt/terraria/install.sh --vanilla</code> or <code>--tshock</code>
+    </p>
 </div>
 
 <div class="card">

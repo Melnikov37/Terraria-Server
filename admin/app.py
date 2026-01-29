@@ -29,9 +29,18 @@ REST_URL = os.environ.get('REST_URL', 'http://127.0.0.1:7878')
 REST_TOKEN = os.environ.get('REST_TOKEN', '')
 ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin')
+SERVER_TYPE = os.environ.get('SERVER_TYPE', 'tshock')
 CONFIG_FILE = os.path.join(TERRARIA_DIR, 'serverconfig.txt')
 TSHOCK_CONFIG = os.path.join(TERRARIA_DIR, 'tshock', 'config.json')
 SERVICE_NAME = 'terraria'
+
+def get_server_type():
+    """Get current server type from file or env"""
+    type_file = os.path.join(TERRARIA_DIR, '.server_type')
+    if os.path.exists(type_file):
+        with open(type_file) as f:
+            return f.read().strip()
+    return SERVER_TYPE
 
 
 # ============== Auth ==============
@@ -90,6 +99,8 @@ def rest_call(endpoint, method='GET', data=None):
 
 def get_server_status():
     """Get comprehensive server status"""
+    server_type = get_server_type()
+
     # Check systemd service
     try:
         result = subprocess.run(
@@ -100,26 +111,41 @@ def get_server_status():
     except:
         service_running = False
 
-    # Get TShock status via REST
-    rest_status = rest_call('/v2/server/status')
+    # Get version from file
+    version = 'unknown'
+    version_file = os.path.join(TERRARIA_DIR, '.server_version')
+    if os.path.exists(version_file):
+        with open(version_file) as f:
+            version = f.read().strip()
 
-    if rest_status.get('status') == '200':
-        return {
-            'online': True,
-            'service': service_running,
-            'name': rest_status.get('name', 'Terraria Server'),
-            'port': rest_status.get('port', 7777),
-            'players': rest_status.get('playercount', 0),
-            'max_players': rest_status.get('maxplayers', 8),
-            'world': rest_status.get('world', 'Unknown'),
-            'uptime': rest_status.get('uptime', ''),
-            'version': rest_status.get('serverversion', ''),
-        }
+    # For TShock, try REST API
+    if server_type == 'tshock':
+        rest_status = rest_call('/v2/server/status')
 
+        if rest_status.get('status') == '200':
+            return {
+                'online': True,
+                'service': service_running,
+                'server_type': server_type,
+                'name': rest_status.get('name', 'Terraria Server'),
+                'port': rest_status.get('port', 7777),
+                'players': rest_status.get('playercount', 0),
+                'max_players': rest_status.get('maxplayers', 8),
+                'world': rest_status.get('world', 'Unknown'),
+                'uptime': rest_status.get('uptime', ''),
+                'version': rest_status.get('serverversion', version),
+            }
+
+    # For vanilla or if REST failed, just check service
     return {
-        'online': False,
+        'online': service_running,
         'service': service_running,
-        'error': rest_status.get('error', 'Cannot connect to server')
+        'server_type': server_type,
+        'version': version,
+        'port': 7777,
+        'players': '?' if service_running else 0,
+        'max_players': 8,
+        'error': None if service_running else 'Server is stopped'
     }
 
 
@@ -345,22 +371,42 @@ def server_control(action):
 # ============== Update ==============
 
 def get_version_info():
-    """Get current and latest TShock versions"""
+    """Get current and latest server versions"""
+    server_type = get_server_type()
+
     current = "unknown"
-    version_file = os.path.join(TERRARIA_DIR, '.tshock_version')
+    version_file = os.path.join(TERRARIA_DIR, '.server_version')
     if os.path.exists(version_file):
         with open(version_file) as f:
             current = f.read().strip()
 
     latest = "unknown"
     try:
-        resp = requests.get('https://api.github.com/repos/Pryaxis/TShock/releases/latest', timeout=5)
-        if resp.ok:
-            latest = resp.json().get('tag_name', 'unknown')
+        if server_type == 'tshock':
+            resp = requests.get('https://api.github.com/repos/Pryaxis/TShock/releases/latest', timeout=5)
+            if resp.ok:
+                latest = resp.json().get('tag_name', 'unknown')
+        else:
+            # For vanilla, check terraria.org
+            resp = requests.get('https://terraria.org/api/get/dedicated-servers-names', timeout=5)
+            if resp.ok:
+                files = resp.json()
+                if files:
+                    # Extract version from filename like "terraria-server-1452.zip"
+                    import re
+                    match = re.search(r'(\d+)', files[0])
+                    if match:
+                        ver = match.group(1)
+                        latest = f"1.4.5.{ver[-1]}" if len(ver) == 4 else ver
     except:
         pass
 
-    return {'current': current, 'latest': latest, 'update_available': current != latest and latest != 'unknown'}
+    return {
+        'current': current,
+        'latest': latest,
+        'server_type': server_type,
+        'update_available': current != latest and latest != 'unknown'
+    }
 
 
 @app.route('/update', methods=['POST'])

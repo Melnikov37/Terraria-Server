@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# TShock Terraria Server Installation Script
-# IDEMPOTENT: Safe to run multiple times, only adds missing components
+# Terraria Server Installation Script
+# Supports both TShock and Vanilla servers
+# IDEMPOTENT: Safe to run multiple times
 
 set -e
 
@@ -9,10 +10,59 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/terraria}"
 SERVER_USER="${SERVER_USER:-terraria}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "=== TShock Terraria Server Installation ==="
+# Parse arguments
+SERVER_TYPE=""
+FORCE_DOWNLOAD=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --tshock|-t)
+            SERVER_TYPE="tshock"
+            shift
+            ;;
+        --vanilla|-v)
+            SERVER_TYPE="vanilla"
+            shift
+            ;;
+        --update|-u)
+            FORCE_DOWNLOAD=true
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# Determine server type
+TYPE_FILE="$INSTALL_DIR/.server_type"
+if [ -z "$SERVER_TYPE" ]; then
+    if [ -f "$TYPE_FILE" ]; then
+        SERVER_TYPE=$(cat "$TYPE_FILE")
+        echo "Using existing server type: $SERVER_TYPE"
+    else
+        echo ""
+        echo "Choose server type:"
+        echo "  1) TShock  - Plugins, permissions, REST API, admin tools (Terraria 1.4.4.9)"
+        echo "  2) Vanilla - Official server, latest version (Terraria 1.4.5.x)"
+        echo ""
+        read -p "Enter choice [1/2]: " choice
+        case $choice in
+            2|v|vanilla)
+                SERVER_TYPE="vanilla"
+                ;;
+            *)
+                SERVER_TYPE="tshock"
+                ;;
+        esac
+    fi
+fi
+
+echo ""
+echo "=== Terraria Server Installation ==="
+echo "Server type: $SERVER_TYPE"
 echo "Install directory: $INSTALL_DIR"
 echo "Server user: $SERVER_USER"
-echo "Mode: Idempotent (safe to re-run)"
 echo ""
 
 # Check if running as root
@@ -22,7 +72,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # ============================================================
-# STEP 1: Install system dependencies (idempotent by default)
+# STEP 1: Install system dependencies
 # ============================================================
 echo "[1/8] Checking system dependencies..."
 
@@ -44,33 +94,34 @@ else
 fi
 
 # ============================================================
-# STEP 2: Install .NET Runtime (6.0 required for TShock)
+# STEP 2: Install .NET Runtime (for TShock)
 # ============================================================
 echo "[2/8] Checking .NET Runtime..."
 
-wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
-chmod +x /tmp/dotnet-install.sh
+if [ "$SERVER_TYPE" = "tshock" ]; then
+    wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
+    chmod +x /tmp/dotnet-install.sh
 
-# Check if .NET 6.0 is installed (required for TShock)
-if ! dotnet --list-runtimes 2>/dev/null | grep -q "Microsoft.NETCore.App 6.0"; then
-    echo "Installing .NET 6.0 Runtime (required for TShock)..."
-    /tmp/dotnet-install.sh --channel 6.0 --runtime dotnet --install-dir /usr/share/dotnet
+    if ! dotnet --list-runtimes 2>/dev/null | grep -q "Microsoft.NETCore.App 6.0"; then
+        echo "Installing .NET 6.0 Runtime (required for TShock)..."
+        /tmp/dotnet-install.sh --channel 6.0 --runtime dotnet --install-dir /usr/share/dotnet
+    else
+        echo ".NET 6.0 already installed"
+    fi
+
+    ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet 2>/dev/null || true
+
+    if [ ! -f /etc/profile.d/dotnet.sh ]; then
+        echo "export DOTNET_ROOT=/usr/share/dotnet" > /etc/profile.d/dotnet.sh
+    fi
+    export DOTNET_ROOT=/usr/share/dotnet
+    rm -f /tmp/dotnet-install.sh
+
+    echo "Installed .NET runtimes:"
+    dotnet --list-runtimes 2>/dev/null || echo "  (none found)"
 else
-    echo ".NET 6.0 already installed"
+    echo "Skipped (not needed for vanilla)"
 fi
-
-# Ensure dotnet is in PATH
-ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet 2>/dev/null || true
-
-if [ ! -f /etc/profile.d/dotnet.sh ]; then
-    echo "export DOTNET_ROOT=/usr/share/dotnet" > /etc/profile.d/dotnet.sh
-fi
-export DOTNET_ROOT=/usr/share/dotnet
-
-rm -f /tmp/dotnet-install.sh
-
-echo "Installed .NET runtimes:"
-dotnet --list-runtimes 2>/dev/null || echo "  (none found)"
 
 # ============================================================
 # STEP 3: Create server user
@@ -89,104 +140,129 @@ fi
 # ============================================================
 echo "[4/8] Checking directories..."
 
-for dir in "$INSTALL_DIR" "$INSTALL_DIR/worlds" "$INSTALL_DIR/tshock" "$INSTALL_DIR/ServerPlugins" "$INSTALL_DIR/admin" "$INSTALL_DIR/admin/templates"; do
+for dir in "$INSTALL_DIR" "$INSTALL_DIR/worlds" "$INSTALL_DIR/admin" "$INSTALL_DIR/admin/templates" "$INSTALL_DIR/backups"; do
     if [ ! -d "$dir" ]; then
         mkdir -p "$dir"
         echo "Created: $dir"
     fi
 done
 
+if [ "$SERVER_TYPE" = "tshock" ]; then
+    mkdir -p "$INSTALL_DIR/tshock" "$INSTALL_DIR/ServerPlugins"
+fi
+
 # ============================================================
-# STEP 5: Download TShock (only if not present or update requested)
+# STEP 5: Download server
 # ============================================================
-echo "[5/8] Checking TShock installation..."
+echo "[5/8] Checking server installation..."
+
+CURRENT_TYPE=""
+[ -f "$TYPE_FILE" ] && CURRENT_TYPE=$(cat "$TYPE_FILE")
 
 NEED_DOWNLOAD=false
-
 if [ ! -f "$INSTALL_DIR/.server_bin" ]; then
     NEED_DOWNLOAD=true
-    echo "TShock not found, will download..."
-elif [ "$1" = "--update" ] || [ "$1" = "-u" ]; then
+elif [ "$FORCE_DOWNLOAD" = true ]; then
     NEED_DOWNLOAD=true
-    echo "Update requested, will re-download TShock..."
-else
-    SERVER_BIN=$(cat "$INSTALL_DIR/.server_bin" 2>/dev/null || echo "")
-    if [ ! -f "$SERVER_BIN" ]; then
-        NEED_DOWNLOAD=true
-        echo "Server binary missing, will re-download..."
-    else
-        echo "TShock already installed: $SERVER_BIN"
-    fi
+elif [ "$CURRENT_TYPE" != "$SERVER_TYPE" ]; then
+    NEED_DOWNLOAD=true
+    echo "Server type changed: $CURRENT_TYPE -> $SERVER_TYPE"
 fi
 
 if [ "$NEED_DOWNLOAD" = true ]; then
     cd /tmp
+    rm -rf server-extract server-download.*
 
-    # Get latest release URL
-    DOWNLOAD_URL=$(curl -s https://api.github.com/repos/Pryaxis/TShock/releases/latest | jq -r '.assets[] | select(.name | contains("linux")) | .browser_download_url' | head -1)
+    if [ "$SERVER_TYPE" = "tshock" ]; then
+        echo "Downloading TShock..."
+        RELEASE_INFO=$(curl -s https://api.github.com/repos/Pryaxis/TShock/releases/latest)
+        DOWNLOAD_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | contains("linux")) | .browser_download_url' | head -1)
+        VERSION=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
 
-    if [ -z "$DOWNLOAD_URL" ]; then
-        echo "Error: Could not find TShock download URL"
-        exit 1
-    fi
+        wget -q --show-progress -O server-download.zip "$DOWNLOAD_URL"
 
-    echo "Downloading: $DOWNLOAD_URL"
-    wget -q --show-progress -O tshock-download.zip "$DOWNLOAD_URL"
+        mkdir -p server-extract
+        unzip -o server-download.zip -d server-extract
 
-    # Extract
-    rm -rf tshock-extract
-    mkdir -p tshock-extract
-    unzip -o tshock-download.zip -d tshock-extract
-
-    # Handle .tar inside .zip
-    TAR_FILE=$(find tshock-extract -name "*.tar" -type f 2>/dev/null | head -1)
-    if [ -n "$TAR_FILE" ]; then
-        echo "Extracting tar: $TAR_FILE"
-        tar -xf "$TAR_FILE" -C "$INSTALL_DIR/"
-    else
-        SUBDIR=$(find tshock-extract -maxdepth 1 -type d -name "TShock*" | head -1)
-        if [ -n "$SUBDIR" ]; then
-            cp -r "$SUBDIR"/* "$INSTALL_DIR/"
+        # Handle .tar inside .zip
+        TAR_FILE=$(find server-extract -name "*.tar" -type f 2>/dev/null | head -1)
+        if [ -n "$TAR_FILE" ]; then
+            tar -xf "$TAR_FILE" -C "$INSTALL_DIR/"
         else
-            cp -r tshock-extract/* "$INSTALL_DIR/"
+            SUBDIR=$(find server-extract -maxdepth 1 -type d -name "TShock*" | head -1)
+            if [ -n "$SUBDIR" ]; then
+                cp -r "$SUBDIR"/* "$INSTALL_DIR/"
+            else
+                cp -r server-extract/* "$INSTALL_DIR/"
+            fi
         fi
-    fi
 
-    # Find server binary
-    SERVER_BIN=$(find "$INSTALL_DIR" -name "TShock.Server" -type f 2>/dev/null | head -1)
-    [ -z "$SERVER_BIN" ] && SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer.bin.x86_64" -type f 2>/dev/null | head -1)
-    [ -z "$SERVER_BIN" ] && SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer" -type f -executable 2>/dev/null | head -1)
+        # Find binary
+        SERVER_BIN=$(find "$INSTALL_DIR" -name "TShock.Server" -type f 2>/dev/null | head -1)
+        [ -z "$SERVER_BIN" ] && SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer.bin.x86_64" -type f 2>/dev/null | head -1)
+
+        echo "$VERSION" > "$INSTALL_DIR/.server_version"
+
+    else
+        echo "Downloading Vanilla server..."
+        # Get latest vanilla version
+        DOWNLOAD_PAGE=$(curl -s "https://terraria.org/api/get/dedicated-servers-names")
+        LATEST_FILE=$(echo "$DOWNLOAD_PAGE" | jq -r '.[0]' 2>/dev/null || echo "terraria-server-1451.zip")
+        VERSION=$(echo "$LATEST_FILE" | grep -oP '\d+' | head -1)
+
+        DOWNLOAD_URL="https://terraria.org/api/download/pc-dedicated-server/$LATEST_FILE"
+        echo "Downloading: $DOWNLOAD_URL"
+        wget -q --show-progress -O server-download.zip "$DOWNLOAD_URL"
+
+        mkdir -p server-extract
+        unzip -o server-download.zip -d server-extract
+
+        # Find Linux folder
+        LINUX_DIR=$(find server-extract -type d -name "Linux" | head -1)
+        if [ -n "$LINUX_DIR" ]; then
+            cp -r "$LINUX_DIR"/* "$INSTALL_DIR/"
+        else
+            # Try numeric folder
+            NUMERIC_DIR=$(find server-extract -maxdepth 1 -type d -regex '.*/[0-9]+' | head -1)
+            if [ -n "$NUMERIC_DIR" ] && [ -d "$NUMERIC_DIR/Linux" ]; then
+                cp -r "$NUMERIC_DIR/Linux"/* "$INSTALL_DIR/"
+            fi
+        fi
+
+        SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer.bin.x86_64" -type f 2>/dev/null | head -1)
+        [ -z "$SERVER_BIN" ] && SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer" -type f 2>/dev/null | head -1)
+
+        echo "1.4.5.$VERSION" > "$INSTALL_DIR/.server_version"
+    fi
 
     if [ -n "$SERVER_BIN" ]; then
         chmod +x "$SERVER_BIN"
         echo "$SERVER_BIN" > "$INSTALL_DIR/.server_bin"
+        echo "$SERVER_TYPE" > "$TYPE_FILE"
         echo "Server binary: $SERVER_BIN"
-
-        # Save installed version
-        INSTALLED_VERSION=$(curl -s https://api.github.com/repos/Pryaxis/TShock/releases/latest | jq -r '.tag_name')
-        if [ -n "$INSTALLED_VERSION" ] && [ "$INSTALLED_VERSION" != "null" ]; then
-            echo "$INSTALLED_VERSION" > "$INSTALL_DIR/.tshock_version"
-            echo "TShock version: $INSTALLED_VERSION"
-        fi
+        echo "Version: $(cat "$INSTALL_DIR/.server_version")"
     else
         echo "ERROR: Could not find server binary!"
         ls -la "$INSTALL_DIR/"
         exit 1
     fi
 
-    rm -rf tshock-download.zip tshock-extract
+    rm -rf server-extract server-download.*
+else
+    echo "Server already installed: $(cat "$INSTALL_DIR/.server_bin" 2>/dev/null)"
+    echo "Version: $(cat "$INSTALL_DIR/.server_version" 2>/dev/null || echo 'unknown')"
 fi
 
 # ============================================================
-# STEP 6: Create configuration files (only if not exist)
+# STEP 6: Create configuration files
 # ============================================================
 echo "[6/8] Checking configuration files..."
 
 # Server config
 if [ ! -f "$INSTALL_DIR/serverconfig.txt" ]; then
-    cat > "$INSTALL_DIR/serverconfig.txt" << 'EOF'
-# TShock Server Configuration (Vanilla-like)
-world=/opt/terraria/worlds/world1.wld
+    cat > "$INSTALL_DIR/serverconfig.txt" << EOF
+# Terraria Server Configuration
+world=$INSTALL_DIR/worlds/world1.wld
 autocreate=2
 worldname=World
 difficulty=0
@@ -194,7 +270,7 @@ maxplayers=8
 port=7777
 password=
 motd=
-worldpath=/opt/terraria/worlds
+worldpath=$INSTALL_DIR/worlds
 secure=1
 language=en-US
 upnp=0
@@ -203,12 +279,11 @@ priority=1
 EOF
     echo "Created: serverconfig.txt"
 else
-    echo "Exists: serverconfig.txt (not modified)"
+    echo "Exists: serverconfig.txt"
 fi
 
-# TShock config - only create if not exists
-if [ ! -f "$INSTALL_DIR/tshock/config.json" ]; then
-    # Generate tokens only for new installation
+# TShock config
+if [ "$SERVER_TYPE" = "tshock" ] && [ ! -f "$INSTALL_DIR/tshock/config.json" ]; then
     REST_TOKEN=$(openssl rand -hex 32)
 
     cat > "$INSTALL_DIR/tshock/config.json" << EOF
@@ -222,53 +297,15 @@ if [ ! -f "$INSTALL_DIR/tshock/config.json" ]; then
     "UseServerName": false,
     "LogPath": "tshock/logs",
     "DebugLogs": false,
-    "DisableLoginBeforeJoin": false,
-    "IgnoreChestStacksOnLoad": false,
     "AutoSave": true,
     "AutoSaveInterval": 10,
     "AnnounceSave": false,
     "EnableWhitelist": false,
-    "WhitelistKickReason": "You are not on the whitelist.",
-    "HardcoreOnly": false,
-    "MediumcoreOnly": false,
-    "SoftcoreOnly": false,
-    "DisableBuild": false,
-    "DisableClownBombs": false,
-    "DisableDungeonGuardian": false,
-    "DisableInvisPvP": false,
-    "DisableSnowBalls": false,
-    "DisableTombstones": false,
-    "ForceTime": "normal",
-    "PvPMode": "normal",
-    "SpawnProtection": false,
-    "SpawnProtectionRadius": 10,
-    "RangeChecks": true,
-    "AnonymousBossInvasions": true,
-    "MaxHP": 500,
-    "MaxMP": 200,
-    "BombExplosionRadius": 5,
-    "DefaultRegistrationGroupName": "default",
-    "DefaultGuestGroupName": "guest",
-    "RememberLeavePos": false,
-    "MaximumLoginAttempts": 3,
-    "KickOnMediumcoreDeath": false,
-    "BanOnMediumcoreDeath": false,
     "RequireLogin": false,
     "AllowLoginAnyUsername": true,
-    "AllowRegisterAnyUsername": true,
-    "DisableUUIDLogin": false,
-    "KickEmptyUUID": false,
     "DisableSpewLogs": true,
-    "HashAlgorithm": "sha512",
-    "BCryptWorkFactor": 7,
     "RESTApiEnabled": true,
     "RESTApiPort": 7878,
-    "RESTRequestBucketDecreaseIntervalMinutes": 1,
-    "RESTLimitOnlyFailedLoginRequests": true,
-    "RESTMaximumRequestsPerInterval": 5,
-    "LogRest": false,
-    "EnableTokenEndpointAuthentication": false,
-    "RESTMaximumRequestBodySize": 8000,
     "ApplicationRestTokens": {
       "web-admin": {
         "Username": "web-admin",
@@ -276,45 +313,10 @@ if [ ! -f "$INSTALL_DIR/tshock/config.json" ]; then
         "Token": "${REST_TOKEN}"
       }
     },
-    "BroadcastRGB": [127, 255, 212],
     "StorageType": "sqlite",
     "SqliteDBPath": "tshock/tshock.sqlite",
-    "UseSqlLogs": false,
-    "PreventBannedItemSpawn": false,
-    "PreventDeadModification": true,
-    "PreventInvalidPlaceStyle": true,
-    "ForceXmas": false,
-    "ForceHalloween": false,
-    "AllowCutTilesAndBreakables": false,
-    "AllowIce": false,
-    "AllowCrimsonCreep": true,
-    "AllowCorruptionCreep": true,
-    "AllowHallowCreep": true,
-    "StatueSpawn200": 3,
-    "StatueSpawn600": 6,
-    "StatueSpawnWorld": 10,
-    "CommandSpecifier": "/",
-    "CommandSilentSpecifier": ".",
-    "KickOnHardcoreDeath": false,
-    "BanOnHardcoreDeath": false,
-    "DisableDefaultIPBan": false,
-    "EnableIPBans": true,
-    "EnableUUIDBans": true,
-    "EnableBanOnUsernames": false,
-    "DefaultMaximumSpawns": 5,
-    "DefaultSpawnRate": 600,
-    "InfiniteInvasion": false,
-    "PvPWithoutArmor": true,
-    "EnableChatAboveHeads": false,
-    "EnableGeoIP": false,
-    "DisplayIPToAdmins": false,
-    "ChatFormat": "{1}{2}{3}: {4}",
-    "ChatAboveHeadsFormat": "{2}",
+    "SpawnProtection": false,
     "SuppressPermissionFailureNotices": true,
-    "DisableSecondUpdateLogs": true,
-    "SuperAdminChatRGB": [255, 255, 255],
-    "SuperAdminChatPrefix": "",
-    "SuperAdminChatSuffix": "",
     "ShowBackupAutosaveMessages": false
   }
 }
@@ -322,9 +324,7 @@ EOF
     echo "Created: tshock/config.json"
     echo "REST_TOKEN=$REST_TOKEN" > "$INSTALL_DIR/.rest_token"
 else
-    echo "Exists: tshock/config.json (not modified)"
-    # Extract existing REST token for admin .env
-    REST_TOKEN=$(grep -o '"Token": "[^"]*"' "$INSTALL_DIR/tshock/config.json" | head -1 | cut -d'"' -f4 || cat "$INSTALL_DIR/.rest_token" 2>/dev/null | cut -d= -f2 || echo "")
+    REST_TOKEN=$(grep -o '"Token": "[^"]*"' "$INSTALL_DIR/tshock/config.json" 2>/dev/null | head -1 | cut -d'"' -f4 || cat "$INSTALL_DIR/.rest_token" 2>/dev/null | cut -d= -f2 || echo "")
 fi
 
 # Admin .env file
@@ -333,12 +333,7 @@ if [ ! -f "$INSTALL_DIR/admin/.env" ]; then
     NEW_INSTALL=true
     ADMIN_PASSWORD=$(openssl rand -hex 16)
     SECRET_KEY=$(openssl rand -hex 32)
-
-    # Use existing REST_TOKEN if available
-    if [ -z "$REST_TOKEN" ]; then
-        REST_TOKEN=$(openssl rand -hex 32)
-        echo "Warning: Generated new REST token. Update tshock/config.json manually."
-    fi
+    [ -z "$REST_TOKEN" ] && REST_TOKEN=$(openssl rand -hex 32)
 
     cat > "$INSTALL_DIR/admin/.env" << EOF
 TERRARIA_DIR=$INSTALL_DIR
@@ -347,11 +342,15 @@ REST_URL=http://127.0.0.1:7878
 SECRET_KEY=$SECRET_KEY
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=$ADMIN_PASSWORD
+SERVER_TYPE=$SERVER_TYPE
 EOF
     chmod 600 "$INSTALL_DIR/admin/.env"
     echo "Created: admin/.env"
 else
-    echo "Exists: admin/.env (credentials preserved)"
+    # Update server type in .env
+    sed -i "s/^SERVER_TYPE=.*/SERVER_TYPE=$SERVER_TYPE/" "$INSTALL_DIR/admin/.env" 2>/dev/null || \
+        echo "SERVER_TYPE=$SERVER_TYPE" >> "$INSTALL_DIR/admin/.env"
+    echo "Exists: admin/.env"
 fi
 
 # ============================================================
@@ -359,15 +358,12 @@ fi
 # ============================================================
 echo "[7/8] Checking Python environment and admin files..."
 
-# Copy admin files (always update code, but not .env)
 if [ -d "$SCRIPT_DIR/admin" ]; then
-    # Copy all except .env and venv
     find "$SCRIPT_DIR/admin" -maxdepth 1 -type f ! -name ".env" -exec cp {} "$INSTALL_DIR/admin/" \;
     cp -r "$SCRIPT_DIR/admin/templates/"* "$INSTALL_DIR/admin/templates/" 2>/dev/null || true
     echo "Updated admin panel files"
 fi
 
-# Create venv if not exists
 if [ ! -d "$INSTALL_DIR/admin/venv" ]; then
     echo "Creating Python virtual environment..."
     python3 -m venv "$INSTALL_DIR/admin/venv"
@@ -376,25 +372,29 @@ if [ ! -d "$INSTALL_DIR/admin/venv" ]; then
     echo "Created: admin/venv"
 else
     echo "Exists: admin/venv"
-    # Update packages
     "$INSTALL_DIR/admin/venv/bin/pip" install -q --upgrade flask gunicorn requests python-dotenv 2>/dev/null || true
 fi
 
-# Fix ownership
+# Copy scripts
+for script in update.sh switch-server.sh; do
+    if [ -f "$SCRIPT_DIR/$script" ]; then
+        cp "$SCRIPT_DIR/$script" "$INSTALL_DIR/$script"
+        chmod +x "$INSTALL_DIR/$script"
+    fi
+done
+
 chown -R "$SERVER_USER:$SERVER_USER" "$INSTALL_DIR"
 
 # ============================================================
-# STEP 8: Setup systemd services and sudoers
+# STEP 8: Setup systemd services
 # ============================================================
 echo "[8/8] Checking systemd services..."
 
 SERVER_BIN=$(cat "$INSTALL_DIR/.server_bin")
 
-# Terraria service
-if [ ! -f /etc/systemd/system/terraria.service ] || [ "$1" = "--update" ]; then
-    cat > /etc/systemd/system/terraria.service << EOF
+cat > /etc/systemd/system/terraria.service << EOF
 [Unit]
-Description=TShock Terraria Server
+Description=Terraria Server ($SERVER_TYPE)
 After=network.target
 
 [Service]
@@ -412,15 +412,8 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
-    echo "Created/Updated: terraria.service"
-    RELOAD_SYSTEMD=true
-else
-    echo "Exists: terraria.service"
-fi
 
-# Admin service
-if [ ! -f /etc/systemd/system/terraria-admin.service ] || [ "$1" = "--update" ]; then
-    cat > /etc/systemd/system/terraria-admin.service << EOF
+cat > /etc/systemd/system/terraria-admin.service << EOF
 [Unit]
 Description=Terraria Web Admin Panel
 After=network.target terraria.service
@@ -437,16 +430,9 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
-    echo "Created/Updated: terraria-admin.service"
-    RELOAD_SYSTEMD=true
-else
-    echo "Exists: terraria-admin.service"
-fi
 
-# Sudoers - allow terraria user to run systemctl for terraria services
-echo "Updating sudoers configuration..."
+# Sudoers
 cat > /etc/sudoers.d/terraria << 'SUDOERS'
-# Allow terraria user to manage services without password
 terraria ALL=(ALL) NOPASSWD: /usr/bin/systemctl start terraria
 terraria ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop terraria
 terraria ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart terraria
@@ -465,66 +451,34 @@ terraria ALL=(ALL) NOPASSWD: /bin/systemctl restart terraria.service
 terraria ALL=(ALL) NOPASSWD: /bin/systemctl status terraria.service
 SUDOERS
 chmod 440 /etc/sudoers.d/terraria
-# Validate sudoers syntax
-if visudo -c -f /etc/sudoers.d/terraria 2>/dev/null; then
-    echo "Updated: sudoers.d/terraria (validated)"
-else
-    echo "ERROR: sudoers syntax error!"
-    cat /etc/sudoers.d/terraria
-fi
 
-# Reload systemd if needed
-if [ "$RELOAD_SYSTEMD" = true ]; then
-    systemctl daemon-reload
-fi
-
-# Enable services (idempotent)
+systemctl daemon-reload
 systemctl enable terraria 2>/dev/null || true
 systemctl enable terraria-admin 2>/dev/null || true
 
-# Copy update script
-if [ -f "$SCRIPT_DIR/update.sh" ]; then
-    cp "$SCRIPT_DIR/update.sh" "$INSTALL_DIR/update.sh"
-    chmod +x "$INSTALL_DIR/update.sh"
-    chown "$SERVER_USER:$SERVER_USER" "$INSTALL_DIR/update.sh"
-    echo "Installed: update.sh"
-fi
-
-# Setup auto-update cron (daily at 4 AM, only if not exists)
-CRON_FILE="/etc/cron.d/terraria-update"
-if [ ! -f "$CRON_FILE" ]; then
-    cat > "$CRON_FILE" << EOF
-# Auto-update TShock daily at 4 AM
-0 4 * * * root $INSTALL_DIR/update.sh >> /var/log/terraria-update.log 2>&1
-EOF
-    chmod 644 "$CRON_FILE"
-    echo "Created: cron job for daily auto-update (4 AM)"
-else
-    echo "Exists: cron job for auto-update"
-fi
-
-# Restart running services to apply changes
+# Restart running services
 echo ""
-echo "Checking and restarting services..."
+echo "Restarting services..."
 
 if systemctl is-active --quiet terraria-admin; then
-    echo "Restarting terraria-admin..."
     systemctl restart terraria-admin
 fi
 
 if systemctl is-active --quiet terraria; then
-    echo "Restarting terraria..."
     systemctl restart terraria
 fi
 
+# ============================================================
+# Done
+# ============================================================
 echo ""
 echo "=========================================="
 echo "    Installation Complete!"
 echo "=========================================="
 echo ""
-echo "Server: $INSTALL_DIR"
-echo "Config: $INSTALL_DIR/serverconfig.txt"
-echo "Worlds: $INSTALL_DIR/worlds/"
+echo "Server type: $SERVER_TYPE"
+echo "Version: $(cat "$INSTALL_DIR/.server_version" 2>/dev/null || echo 'unknown')"
+echo "Directory: $INSTALL_DIR"
 echo ""
 
 if [ "$NEW_INSTALL" = true ]; then
@@ -545,11 +499,10 @@ else
 fi
 
 echo "Commands:"
-echo "  sudo systemctl start terraria        # Start game server"
+echo "  sudo systemctl start terraria        # Start server"
 echo "  sudo systemctl start terraria-admin  # Start web admin"
-echo "  sudo systemctl status terraria       # Check status"
 echo ""
-echo "Re-run options:"
-echo "  ./install.sh           # Safe re-run, preserves configs"
-echo "  ./install.sh --update  # Re-download TShock & update services"
+echo "Switch server type:"
+echo "  sudo ./install.sh --tshock           # Switch to TShock"
+echo "  sudo ./install.sh --vanilla          # Switch to Vanilla"
 echo ""
