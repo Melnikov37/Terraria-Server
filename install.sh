@@ -467,6 +467,20 @@ fi
 systemctl enable terraria 2>/dev/null || true
 systemctl enable terraria-admin 2>/dev/null || true
 
+# Restart running services to apply changes
+echo ""
+echo "Checking and restarting services..."
+
+if systemctl is-active --quiet terraria-admin; then
+    echo "Restarting terraria-admin..."
+    systemctl restart terraria-admin
+fi
+
+if systemctl is-active --quiet terraria; then
+    echo "Restarting terraria..."
+    systemctl restart terraria
+fi
+
 echo ""
 echo "=========================================="
 echo "    Installation Complete!"
