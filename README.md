@@ -1,18 +1,29 @@
-# TShock Terraria Server
+# Terraria Server (TShock)
 
-Скрипты для быстрого развертывания TShock сервера Terraria с веб-админкой.
+Скрипты для развертывания **ванильно-подобного** сервера Terraria с полным управлением через веб-интерфейс.
 
-**TShock** — расширенный сервер Terraria с системой прав, защитой регионов, плагинами и REST API.
+Сервер работает на TShock, но настроен так, что игроки не видят никаких отличий от ванильного сервера — без регистрации, команд и сообщений TShock.
+
+## Возможности
+
+- **Ванильный опыт** — игроки не видят TShock, не нужна регистрация
+- **Веб-админка** — полное управление сервером через браузер
+- **Управление игроками** — kick, ban, unban
+- **Управление миром** — время, погода, вторжения, боссы
+- **Broadcast** — сообщения всем игрокам
+- **Выполнение команд** — любые TShock команды через веб
+
+---
 
 ## Быстрый старт на VPS
 
-### 1. Подключитесь к серверу
+### 1. Подключись к серверу
 
 ```bash
 ssh root@your-server-ip
 ```
 
-### 2. Склонируйте репозиторий
+### 2. Склонируй репозиторий
 
 ```bash
 cd /opt
@@ -20,91 +31,67 @@ git clone https://github.com/Melnikov37/Terraria-Server.git terraria
 cd terraria
 ```
 
-### 3. Запустите установку
+### 3. Запусти установку
 
 ```bash
 chmod +x install.sh
 sudo ./install.sh
 ```
 
-### 4. Откройте порты в файрволе
+**ВАЖНО:** Сохрани пароль админки, который покажется в конце установки!
+
+### 4. Открой порты
 
 ```bash
-# UFW (Ubuntu)
 sudo ufw allow 7777/tcp
 sudo ufw allow 7777/udp
-sudo ufw allow 7878/tcp  # REST API (опционально)
-sudo ufw allow 5000/tcp  # Web Admin (опционально)
-
-# Или iptables
-sudo iptables -A INPUT -p tcp --dport 7777 -j ACCEPT
-sudo iptables -A INPUT -p udp --dport 7777 -j ACCEPT
+sudo ufw allow 5000/tcp  # Веб-админка
 ```
 
-### 5. Запустите сервер
+### 5. Запусти сервер
 
 ```bash
 sudo systemctl start terraria
+sudo systemctl start terraria-admin
 ```
 
-### 6. Настройте администратора
+### 6. Открой админку
 
-```bash
-# Посмотрите токен в логах
-sudo journalctl -u terraria | grep -i token
-
-# Подключитесь к серверу через Terraria клиент и введите:
-# /setup <token>
-# /user add YourName YourPassword superadmin
-# /login YourName YourPassword
 ```
+http://your-server-ip:5000
+```
+
+Войди с логином `admin` и паролем из установки.
 
 ---
 
-## Управление сервером
+## Управление
+
+### Команды systemctl
 
 ```bash
-sudo systemctl start terraria     # Запустить
-sudo systemctl stop terraria      # Остановить
-sudo systemctl restart terraria   # Перезапустить
-sudo systemctl status terraria    # Статус
-sudo journalctl -u terraria -f    # Логи в реальном времени
-```
+# Игровой сервер
+sudo systemctl start terraria
+sudo systemctl stop terraria
+sudo systemctl restart terraria
+sudo systemctl status terraria
 
-## Веб-админка
-
-```bash
-cd /opt/terraria/admin
-pip3 install -r requirements.txt
-python3 app.py
-```
-
-Открыть в браузере: `http://your-server-ip:5000`
-
-### Запуск как сервис (production)
-
-```bash
-# Создать сервис
-sudo tee /etc/systemd/system/terraria-admin.service << EOF
-[Unit]
-Description=Terraria Admin Panel
-After=network.target
-
-[Service]
-Type=simple
-User=terraria
-WorkingDirectory=/opt/terraria/admin
-ExecStart=/usr/bin/python3 /opt/terraria/admin/app.py
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable terraria-admin
+# Веб-админка
 sudo systemctl start terraria-admin
+sudo systemctl stop terraria-admin
+
+# Логи
+sudo journalctl -u terraria -f
 ```
+
+### Веб-админка
+
+| Раздел | Функции |
+|--------|---------|
+| **Dashboard** | Статус сервера, онлайн игроки, start/stop/restart |
+| **Players** | Kick, ban, unban, список банов |
+| **World** | Время, погода, вторжения, broadcast, команды |
+| **Config** | Настройки сервера (порт, пароль, макс. игроков) |
 
 ---
 
@@ -112,16 +99,17 @@ sudo systemctl start terraria-admin
 
 ```
 /opt/terraria/
-├── TShock.Server           # Исполняемый файл
-├── serverconfig.txt        # Конфигурация сервера
+├── TShock.Server           # Сервер
+├── serverconfig.txt        # Основной конфиг
 ├── worlds/                 # Миры
-├── tshock/                 # Настройки TShock
-│   ├── config.json         # Главный конфиг TShock
-│   ├── sscconfig.json      # Server-Side Characters
-│   └── ...
+├── tshock/
+│   ├── config.json         # Конфиг TShock
+│   └── tshock.sqlite       # База данных
 ├── ServerPlugins/          # Плагины
-└── admin/                  # Веб-админка
-    ├── app.py
+└── admin/
+    ├── app.py              # Веб-админка
+    ├── .env                # Креденшалы (REST токен, пароль)
+    ├── requirements.txt
     └── templates/
 ```
 
@@ -129,149 +117,110 @@ sudo systemctl start terraria-admin
 
 ## Конфигурация
 
-### serverconfig.txt (основные настройки)
-
-| Параметр | Описание |
-|----------|----------|
-| `world` | Путь к файлу мира |
-| `autocreate` | Размер мира (1=small, 2=medium, 3=large) |
-| `worldname` | Название мира |
-| `difficulty` | 0=Classic, 1=Expert, 2=Master, 3=Journey |
-| `maxplayers` | Максимум игроков (1-255) |
-| `port` | Порт сервера (по умолчанию 7777) |
-| `password` | Пароль сервера |
-
-### tshock/config.json (после первого запуска)
-
-| Параметр | Описание |
-|----------|----------|
-| `ServerPassword` | Пароль сервера |
-| `ServerPort` | Порт (7777) |
-| `MaxSlots` | Максимум игроков |
-| `RestApiEnabled` | Включить REST API |
-| `RestApiPort` | Порт REST API (7878) |
-| `EnableWhitelist` | Вайтлист |
-| `SpawnProtection` | Защита спавна |
-| `SpawnProtectionRadius` | Радиус защиты |
-
----
-
-## Полезные команды TShock
-
-### В игре (чат)
-
-```
-/help                           # Список команд
-/login <user> <pass>            # Войти в аккаунт
-/register <pass>                # Зарегистрироваться
-/user add <name> <pass> <group> # Создать пользователя
-/group list                     # Список групп
-/region define <name>           # Создать регион
-/region protect <name> true     # Защитить регион
-/kick <player>                  # Кикнуть игрока
-/ban add <player>               # Забанить
-/save                           # Сохранить мир
-/off                            # Выключить сервер
-```
-
-### Группы по умолчанию
-
-| Группа | Права |
-|--------|-------|
-| `guest` | Базовые права |
-| `default` | Обычный игрок |
-| `vip` | VIP права |
-| `trustedadmin` | Админ |
-| `superadmin` | Полные права |
-
----
-
-## REST API
-
-После включения в `config.json`:
+### Файл .env (креденшалы админки)
 
 ```bash
-# Статус сервера
-curl http://localhost:7878/v3/server/status?token=YOUR_TOKEN
+# Посмотреть
+cat /opt/terraria/admin/.env
 
-# Список игроков
-curl http://localhost:7878/v2/players/list?token=YOUR_TOKEN
-
-# Выполнить команду
-curl -X POST http://localhost:7878/v3/server/rawcmd \
-  -d "token=YOUR_TOKEN&cmd=/say Hello"
+# Там находятся:
+# - REST_TOKEN — токен для TShock REST API
+# - ADMIN_PASSWORD — пароль веб-админки
+# - SECRET_KEY — секрет Flask
 ```
 
----
-
-## Плагины
-
-Плагины размещаются в `/opt/terraria/ServerPlugins/`
-
-Популярные плагины:
-- [TShock Plugin Browser](https://github.com/Pryaxis/Plugins)
-- [Terracord](https://github.com/FragLand/terracord) - Discord интеграция
-- [WorldEdit](https://github.com/Nopezal/WorldEdit) - Редактор мира
-
----
-
-## Бэкап
+### Изменить пароль админки
 
 ```bash
-# Ручной бэкап
-cp -r /opt/terraria/worlds /backup/terraria-worlds-$(date +%Y%m%d)
-
-# Автоматический (cron)
-echo "0 */6 * * * root cp -r /opt/terraria/worlds /backup/terraria-\$(date +\%Y\%m\%d-\%H\%M)" | sudo tee /etc/cron.d/terraria-backup
+nano /opt/terraria/admin/.env
+# Измени ADMIN_PASSWORD=новый_пароль
+sudo systemctl restart terraria-admin
 ```
+
+---
+
+## Ванильность
+
+Сервер настроен максимально "ванильно":
+
+| Настройка | Значение |
+|-----------|----------|
+| Требуется логин | Нет |
+| Сообщения TShock | Скрыты |
+| Защита спавна | Отключена |
+| Командный префикс | Скрыт от игроков |
+| Автосохранение | Каждые 10 минут (тихо) |
+
+Игроки просто подключаются и играют как на обычном сервере.
 
 ---
 
 ## Troubleshooting
 
-### Сервер не запускается
+### Не могу подключиться к серверу
 
 ```bash
-# Проверить логи
-sudo journalctl -u terraria -n 50
+# Проверь статус
+sudo systemctl status terraria
 
-# Проверить права
-sudo chown -R terraria:terraria /opt/terraria
+# Проверь порт
+sudo netstat -tlnp | grep 7777
 
-# Проверить .NET
-dotnet --info
+# Проверь файрвол
+sudo ufw status
 ```
 
-### Не могу подключиться
-
-1. Проверьте файрвол: `sudo ufw status`
-2. Проверьте порт: `sudo netstat -tlnp | grep 7777`
-3. Проверьте статус: `sudo systemctl status terraria`
-
-### Мир не создается
-
-Убедитесь, что `worldpath` существует и имеет права записи:
+### Админка не работает
 
 ```bash
-sudo mkdir -p /opt/terraria/worlds
-sudo chown terraria:terraria /opt/terraria/worlds
+# Проверь статус
+sudo systemctl status terraria-admin
+
+# Проверь логи
+sudo journalctl -u terraria-admin -n 50
+
+# Проверь .env файл
+cat /opt/terraria/admin/.env
 ```
 
----
+### REST API не отвечает
 
-## Переменные окружения
+1. Убедись что сервер запущен и прошла загрузка мира
+2. Проверь что REST включен в `/opt/terraria/tshock/config.json`:
+   ```json
+   "RESTApiEnabled": true,
+   "RESTApiPort": 7878
+   ```
 
-| Переменная | По умолчанию | Описание |
-|------------|--------------|----------|
-| `INSTALL_DIR` | `/opt/terraria` | Директория установки |
-| `SERVER_USER` | `terraria` | Системный пользователь |
-| `TSHOCK_VERSION` | `v5.2.0` | Версия TShock |
+### Сбросить пароль админки
+
+```bash
+# Сгенерировать новый пароль
+NEW_PASS=$(openssl rand -hex 16)
+echo "New password: $NEW_PASS"
+
+# Записать в .env
+sed -i "s/ADMIN_PASSWORD=.*/ADMIN_PASSWORD=$NEW_PASS/" /opt/terraria/admin/.env
+
+# Перезапустить админку
+sudo systemctl restart terraria-admin
+```
 
 ---
 
 ## Требования
 
 - Linux (Debian 11+, Ubuntu 20.04+)
-- 1GB RAM минимум (рекомендуется 2GB+)
+- 1GB RAM минимум (2GB+ рекомендуется)
 - .NET 8.0 Runtime (устанавливается автоматически)
-- Python 3.10+ (для веб-админки)
+- Python 3.10+
+
+---
+
+## Порты
+
+| Порт | Протокол | Назначение |
+|------|----------|------------|
+| 7777 | TCP/UDP | Игровой сервер |
+| 7878 | TCP | REST API (только localhost) |
+| 5000 | TCP | Веб-админка |

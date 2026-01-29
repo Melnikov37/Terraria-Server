@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Terraria Admin{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h2>Dashboard</h2>
+    <div class="btn-group">
+        {% if status.online %}
+            <form method="POST" action="{{ url_for('server_control', action='restart') }}" class="inline-form">
+                <button type="submit" class="btn btn-warning">Restart</button>
+            </form>
+            <form method="POST" action="{{ url_for('server_control', action='stop') }}" class="inline-form">
+                <button type="submit" class="btn btn-danger">Stop Server</button>
+            </form>
+        {% else %}
+            <form method="POST" action="{{ url_for('server_control', action='start') }}" class="inline-form">
+                <button type="submit" class="btn btn-success">Start Server</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">Server Status</div>
+    <div style="display: flex; align-items: center; margin-bottom: 20px;">
+        <span class="status-dot {{ 'online' if status.online else 'offline' }}"></span>
+        <span style="font-size: 1.2rem; font-weight: 500;">
+            {{ 'Online' if status.online else 'Offline' }}
+        </span>
+        {% if status.online %}
+            <span class="badge badge-success" style="margin-left: 15px;">{{ status.version }}</span>
+        {% endif %}
+    </div>
+
+    {% if status.online %}
+    <div class="grid grid-4">
+        <div class="stat">
+            <div class="stat-value">{{ status.players }}</div>
+            <div class="stat-label">Players Online</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">{{ status.max_players }}</div>
+            <div class="stat-label">Max Players</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">{{ status.port }}</div>
+            <div class="stat-label">Port</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value" style="font-size: 1rem;">{{ status.world }}</div>
+            <div class="stat-label">World</div>
+        </div>
+    </div>
+    {% else %}
+    <p style="color: var(--text-muted);">
+        {% if status.service %}
+            Service is running but REST API is not responding. Server might be starting up...
+        {% else %}
+            Server is stopped. Click "Start Server" to begin.
+        {% endif %}
+    </p>
+    {% endif %}
+</div>
+
+{% if status.online and players %}
+<div class="card">
+    <div class="card-title">Online Players</div>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Team</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for player in players %}
+            <tr>
+                <td>{{ player.nickname }}</td>
+                <td>{{ player.team }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('kick_player') }}" class="inline-form">
+                        <input type="hidden" name="player" value="{{ player.nickname }}">
+                        <button type="submit" class="btn btn-danger btn-sm">Kick</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% elif status.online %}
+<div class="card">
+    <div class="card-title">Online Players</div>
+    <p style="color: var(--text-muted);">No players online</p>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-title">Quick Actions</div>
+    <div class="btn-group">
+        <form method="POST" action="{{ url_for('save_world') }}" class="inline-form">
+            <button type="submit" class="btn btn-primary" {{ 'disabled' if not status.online }}>Save World</button>
+        </form>
+        <a href="{{ url_for('world') }}" class="btn btn-primary">World Controls</a>
+        <a href="{{ url_for('config') }}" class="btn btn-primary">Configuration</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-refresh status every 15 seconds
+setInterval(() => {
+    fetch('/api/status')
+        .then(r => r.json())
+        .then(data => {
+            const dot = document.querySelector('.status-dot');
+            if (data.online) {
+                dot.classList.remove('offline');
+                dot.classList.add('online');
+            } else {
+                dot.classList.remove('online');
+                dot.classList.add('offline');
+            }
+        })
+        .catch(() => {});
+}, 15000);
+</script>
+{% endblock %}

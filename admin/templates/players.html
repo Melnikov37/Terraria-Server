@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Players - Terraria Admin{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h2>Players Management</h2>
+</div>
+
+<div class="card">
+    <div class="card-title">Online Players ({{ players|length }})</div>
+    {% if players %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Team</th>
+                <th>Group</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for player in players %}
+            <tr>
+                <td>{{ player.nickname }}</td>
+                <td>{{ player.team or '-' }}</td>
+                <td>{{ player.group or 'guest' }}</td>
+                <td>
+                    <div class="btn-group">
+                        <form method="POST" action="{{ url_for('kick_player') }}" class="inline-form">
+                            <input type="hidden" name="player" value="{{ player.nickname }}">
+                            <input type="hidden" name="reason" value="Kicked by admin">
+                            <button type="submit" class="btn btn-warning btn-sm">Kick</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('ban_player') }}" class="inline-form">
+                            <input type="hidden" name="player" value="{{ player.nickname }}">
+                            <input type="hidden" name="reason" value="Banned by admin">
+                            <button type="submit" class="btn btn-danger btn-sm">Ban</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: var(--text-muted);">No players currently online</p>
+    {% endif %}
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-title">Kick Player</div>
+        <form method="POST" action="{{ url_for('kick_player') }}">
+            <div class="form-group">
+                <label>Player Name</label>
+                <input type="text" name="player" required placeholder="Enter player name">
+            </div>
+            <div class="form-group">
+                <label>Reason</label>
+                <input type="text" name="reason" value="Kicked by admin">
+            </div>
+            <button type="submit" class="btn btn-warning">Kick Player</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Ban Player</div>
+        <form method="POST" action="{{ url_for('ban_player') }}">
+            <div class="form-group">
+                <label>Player Name</label>
+                <input type="text" name="player" required placeholder="Enter player name">
+            </div>
+            <div class="form-group">
+                <label>Reason</label>
+                <input type="text" name="reason" value="Banned by admin">
+            </div>
+            <button type="submit" class="btn btn-danger">Ban Player</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">Ban List ({{ bans|length }})</div>
+    {% if bans %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name/IP</th>
+                <th>Reason</th>
+                <th>Date</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ban in bans %}
+            <tr>
+                <td>{{ ban.name or ban.ip or 'Unknown' }}</td>
+                <td>{{ ban.reason or '-' }}</td>
+                <td>{{ ban.bandate or '-' }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('unban_player') }}" class="inline-form">
+                        <input type="hidden" name="id" value="{{ ban.id }}">
+                        <button type="submit" class="btn btn-success btn-sm">Unban</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: var(--text-muted);">No banned players</p>
+    {% endif %}
+</div>
+{% endblock %}

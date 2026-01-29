@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Configuration - Terraria Admin{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h2>Server Configuration</h2>
+</div>
+
+<form method="POST" action="{{ url_for('save_config') }}">
+    <div class="grid grid-2">
+        <div class="card">
+            <div class="card-title">World Settings</div>
+
+            <div class="form-group">
+                <label>World Name</label>
+                <input type="text" name="worldname" value="{{ server_config.get('worldname', 'World') }}">
+            </div>
+
+            <div class="form-group">
+                <label>World Size (for new worlds)</label>
+                <select name="autocreate">
+                    <option value="1" {{ 'selected' if server_config.get('autocreate') == '1' }}>Small</option>
+                    <option value="2" {{ 'selected' if server_config.get('autocreate') == '2' }}>Medium</option>
+                    <option value="3" {{ 'selected' if server_config.get('autocreate') == '3' }}>Large</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Difficulty</label>
+                <select name="difficulty">
+                    <option value="0" {{ 'selected' if server_config.get('difficulty') == '0' }}>Classic</option>
+                    <option value="1" {{ 'selected' if server_config.get('difficulty') == '1' }}>Expert</option>
+                    <option value="2" {{ 'selected' if server_config.get('difficulty') == '2' }}>Master</option>
+                    <option value="3" {{ 'selected' if server_config.get('difficulty') == '3' }}>Journey</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Server Settings</div>
+
+            <div class="form-group">
+                <label>Max Players</label>
+                <input type="number" name="maxplayers" min="1" max="255"
+                       value="{{ server_config.get('maxplayers', '8') }}">
+            </div>
+
+            <div class="form-group">
+                <label>Port</label>
+                <input type="number" name="port" min="1" max="65535"
+                       value="{{ server_config.get('port', '7777') }}">
+            </div>
+
+            <div class="form-group">
+                <label>Password (empty = no password)</label>
+                <input type="text" name="password"
+                       value="{{ server_config.get('password', '') }}"
+                       placeholder="Leave empty for no password">
+            </div>
+
+            <div class="form-group">
+                <label>MOTD (Message of the Day)</label>
+                <input type="text" name="motd"
+                       value="{{ server_config.get('motd', '') }}"
+                       placeholder="Leave empty for vanilla experience">
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <button type="submit" class="btn btn-success">Save Configuration</button>
+        <span style="color: var(--text-muted); margin-left: 15px;">
+            Server restart required for changes to take effect
+        </span>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-title">TShock Settings (Read Only)</div>
+    <p style="color: var(--text-muted); margin-bottom: 15px;">
+        These settings are from tshock/config.json. Edit the file directly on the server for advanced configuration.
+    </p>
+    <table class="table">
+        <tr>
+            <td>REST API</td>
+            <td><span class="badge {{ 'badge-success' if tshock_config.get('RESTApiEnabled') else 'badge-danger' }}">
+                {{ 'Enabled' if tshock_config.get('RESTApiEnabled') else 'Disabled' }}
+            </span></td>
+        </tr>
+        <tr>
+            <td>REST API Port</td>
+            <td>{{ tshock_config.get('RESTApiPort', 7878) }}</td>
+        </tr>
+        <tr>
+            <td>Require Login</td>
+            <td><span class="badge {{ 'badge-warning' if tshock_config.get('RequireLogin') else 'badge-success' }}">
+                {{ 'Yes' if tshock_config.get('RequireLogin') else 'No (Vanilla-like)' }}
+            </span></td>
+        </tr>
+        <tr>
+            <td>Spawn Protection</td>
+            <td><span class="badge {{ 'badge-warning' if tshock_config.get('SpawnProtection') else 'badge-success' }}">
+                {{ 'Yes' if tshock_config.get('SpawnProtection') else 'No (Vanilla-like)' }}
+            </span></td>
+        </tr>
+        <tr>
+            <td>Whitelist</td>
+            <td><span class="badge {{ 'badge-warning' if tshock_config.get('EnableWhitelist') else 'badge-success' }}">
+                {{ 'Enabled' if tshock_config.get('EnableWhitelist') else 'Disabled' }}
+            </span></td>
+        </tr>
+        <tr>
+            <td>Auto Save</td>
+            <td>{{ 'Every ' + (tshock_config.get('AutoSaveInterval', 10)|string) + ' minutes' if tshock_config.get('AutoSave') else 'Disabled' }}</td>
+        </tr>
+    </table>
+</div>
+
+<div class="card">
+    <div class="card-title">Connection Info</div>
+    <p>Players can connect to: <code style="background: var(--bg-input); padding: 5px 10px; border-radius: 4px;">
+        your-server-ip:{{ server_config.get('port', '7777') }}
+    </code></p>
+</div>
+{% endblock %}
