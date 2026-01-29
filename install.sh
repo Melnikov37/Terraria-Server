@@ -313,7 +313,9 @@ else
 fi
 
 # Admin .env file
+NEW_INSTALL=false
 if [ ! -f "$INSTALL_DIR/admin/.env" ]; then
+    NEW_INSTALL=true
     ADMIN_PASSWORD=$(openssl rand -hex 16)
     SECRET_KEY=$(openssl rand -hex 32)
 
@@ -333,17 +335,8 @@ ADMIN_PASSWORD=$ADMIN_PASSWORD
 EOF
     chmod 600 "$INSTALL_DIR/admin/.env"
     echo "Created: admin/.env"
-    echo ""
-    echo "========================================"
-    echo "  NEW ADMIN CREDENTIALS GENERATED"
-    echo "========================================"
-    echo "  Username: admin"
-    echo "  Password: $ADMIN_PASSWORD"
-    echo "========================================"
-    echo ""
 else
     echo "Exists: admin/.env (credentials preserved)"
-    ADMIN_PASSWORD="<existing - see $INSTALL_DIR/admin/.env>"
 fi
 
 # ============================================================
@@ -435,9 +428,9 @@ else
     echo "Exists: terraria-admin.service"
 fi
 
-# Sudoers
-if [ ! -f /etc/sudoers.d/terraria ]; then
-    cat > /etc/sudoers.d/terraria << EOF
+# Sudoers - always update to ensure correct permissions
+echo "Updating sudoers configuration..."
+cat > /etc/sudoers.d/terraria << EOF
 # Allow terraria user to manage terraria services without password
 $SERVER_USER ALL=(ALL) NOPASSWD: /bin/systemctl start terraria
 $SERVER_USER ALL=(ALL) NOPASSWD: /bin/systemctl stop terraria
@@ -448,10 +441,13 @@ $SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop terraria
 $SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart terraria
 $SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl status terraria
 EOF
-    chmod 440 /etc/sudoers.d/terraria
-    echo "Created: sudoers.d/terraria"
+chmod 440 /etc/sudoers.d/terraria
+# Validate sudoers syntax
+if visudo -c -f /etc/sudoers.d/terraria; then
+    echo "Updated: sudoers.d/terraria (validated)"
 else
-    echo "Exists: sudoers.d/terraria"
+    echo "ERROR: sudoers syntax error!"
+    rm -f /etc/sudoers.d/terraria
 fi
 
 # Reload systemd if needed
@@ -472,11 +468,24 @@ echo "Server: $INSTALL_DIR"
 echo "Config: $INSTALL_DIR/serverconfig.txt"
 echo "Worlds: $INSTALL_DIR/worlds/"
 echo ""
-echo "Web Admin:"
-echo "  URL:      http://your-server-ip:5000"
-echo "  Username: admin"
-echo "  Password: $ADMIN_PASSWORD"
-echo ""
+
+if [ "$NEW_INSTALL" = true ]; then
+    echo "========================================"
+    echo "  NEW ADMIN CREDENTIALS"
+    echo "========================================"
+    echo "  URL:      http://your-server-ip:5000"
+    echo "  Username: admin"
+    echo "  Password: $ADMIN_PASSWORD"
+    echo "========================================"
+    echo ""
+    echo "  SAVE THIS PASSWORD!"
+    echo ""
+else
+    echo "Web Admin: http://your-server-ip:5000"
+    echo "Credentials: see $INSTALL_DIR/admin/.env"
+    echo ""
+fi
+
 echo "Commands:"
 echo "  sudo systemctl start terraria        # Start game server"
 echo "  sudo systemctl start terraria-admin  # Start web admin"
