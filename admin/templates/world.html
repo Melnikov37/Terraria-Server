@@ -4,17 +4,54 @@
 {% block content %}
 <div class="header">
     <h2>World Controls</h2>
+    {% if status.online and status.server_type == 'tshock' %}
     <form method="POST" action="{{ url_for('save_world') }}" class="inline-form">
-        <button type="submit" class="btn btn-success" {{ 'disabled' if not status.online }}>Save World</button>
+        <button type="submit" class="btn btn-success">Save World</button>
+    </form>
+    {% endif %}
+</div>
+
+<!-- New World Creation - always available -->
+<div class="card">
+    <div class="card-title">Create New World</div>
+    <form method="POST" action="{{ url_for('recreate_world') }}" onsubmit="return confirm('This will DELETE the current world and create a new one. Old world will be backed up. Continue?');">
+        <div class="grid grid-3">
+            <div class="form-group">
+                <label>World Name</label>
+                <input type="text" name="worldname" value="World" required>
+            </div>
+            <div class="form-group">
+                <label>Size</label>
+                <select name="size">
+                    <option value="1">Small (4200 x 1200)</option>
+                    <option value="2" selected>Medium (6400 x 1800)</option>
+                    <option value="3">Large (8400 x 2400)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Difficulty</label>
+                <select name="difficulty">
+                    <option value="0">Classic</option>
+                    <option value="1">Expert</option>
+                    <option value="2">Master</option>
+                    <option value="3">Journey</option>
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-danger">Create New World</button>
+        <span style="color: var(--text-muted); margin-left: 15px;">
+            Warning: Current world will be backed up and deleted
+        </span>
     </form>
 </div>
 
 {% if not status.online %}
 <div class="card">
-    <p style="color: var(--text-muted);">Server is offline. Start the server to access world controls.</p>
+    <p style="color: var(--text-muted);">Server is offline. Start the server to access more controls.</p>
 </div>
-{% else %}
 
+{% elif status.server_type == 'tshock' %}
+<!-- TShock controls -->
 <div class="grid grid-2">
     <div class="card">
         <div class="card-title">Time Control</div>
@@ -100,10 +137,20 @@
         <tr><td><code>/butcher</code></td><td>Kill all hostile NPCs</td></tr>
         <tr><td><code>/give &lt;player&gt; &lt;item&gt; &lt;amount&gt;</code></td><td>Give item to player</td></tr>
         <tr><td><code>/tp &lt;player1&gt; &lt;player2&gt;</code></td><td>Teleport player</td></tr>
-        <tr><td><code>/heal &lt;player&gt;</code></td><td>Heal player</td></tr>
-        <tr><td><code>/godmode &lt;player&gt;</code></td><td>Toggle godmode</td></tr>
     </table>
 </div>
 
+{% else %}
+<!-- Vanilla server - limited controls -->
+<div class="card">
+    <div class="card-title">Vanilla Server</div>
+    <p style="color: var(--text-muted);">
+        Vanilla server is running. In-game commands are not available via web interface.
+    </p>
+    <p style="color: var(--text-muted); margin-top: 10px;">
+        Use the "Create New World" form above to reset the world with different settings.
+    </p>
+</div>
 {% endif %}
+
 {% endblock %}

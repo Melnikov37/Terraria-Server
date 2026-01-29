@@ -7,6 +7,8 @@ Full server management via TShock REST API
 import os
 import subprocess
 import functools
+import time
+import shutil
 from pathlib import Path
 from datetime import datetime
 
@@ -407,6 +409,70 @@ def get_version_info():
         'server_type': server_type,
         'update_available': current != latest and latest != 'unknown'
     }
+
+
+@app.route('/world/recreate', methods=['POST'])
+@login_required
+def recreate_world():
+    """Delete current world and create new one with specified settings"""
+    worldname = request.form.get('worldname', 'World')
+    size = request.form.get('size', '2')  # 1=small, 2=medium, 3=large
+    difficulty = request.form.get('difficulty', '0')  # 0=classic, 1=expert, 2=master, 3=journey
+
+    try:
+        # Stop server
+        subprocess.run(
+            ['/usr/bin/sudo', '/usr/bin/systemctl', 'stop', 'terraria.service'],
+            capture_output=True, timeout=30
+        )
+        time.sleep(2)
+
+        # Backup and remove old world
+        worlds_dir = os.path.join(TERRARIA_DIR, 'worlds')
+        backup_dir = os.path.join(TERRARIA_DIR, 'backups', datetime.now().strftime('%Y%m%d_%H%M%S'))
+        os.makedirs(backup_dir, exist_ok=True)
+
+        for f in os.listdir(worlds_dir):
+            src = os.path.join(worlds_dir, f)
+            dst = os.path.join(backup_dir, f)
+            if os.path.isfile(src):
+                shutil.move(src, dst)
+
+        # Update serverconfig.txt
+        config_lines = [
+            '# Terraria Server Configuration',
+            f'# Recreated: {datetime.now().isoformat()}',
+            '',
+            f'world={TERRARIA_DIR}/worlds/{worldname}.wld',
+            f'autocreate={size}',
+            f'worldname={worldname}',
+            f'difficulty={difficulty}',
+            f'worldpath={TERRARIA_DIR}/worlds',
+            'maxplayers=8',
+            'port=7777',
+            'password=',
+            'motd=',
+            'secure=1',
+            'language=en-US',
+            'upnp=0',
+            'npcstream=60',
+            'priority=1',
+        ]
+
+        with open(CONFIG_FILE, 'w') as f:
+            f.write('\n'.join(config_lines) + '\n')
+
+        # Start server (will create new world)
+        subprocess.run(
+            ['/usr/bin/sudo', '/usr/bin/systemctl', 'start', 'terraria.service'],
+            capture_output=True, timeout=30
+        )
+
+        flash(f'World "{worldname}" will be created on server start. Old world backed up.', 'success')
+    except Exception as e:
+        flash(f'Error: {e}', 'error')
+
+    return redirect(url_for('world'))
 
 
 @app.route('/update', methods=['POST'])
