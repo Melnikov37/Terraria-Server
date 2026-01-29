@@ -117,6 +117,35 @@
 </div>
 
 <div class="card">
+    <div class="card-title">TShock Version</div>
+    <table class="table">
+        <tr>
+            <td>Current Version</td>
+            <td><code>{{ version.current }}</code></td>
+        </tr>
+        <tr>
+            <td>Latest Version</td>
+            <td>
+                <code>{{ version.latest }}</code>
+                {% if version.update_available %}
+                    <span class="badge badge-warning" style="margin-left: 10px;">Update Available</span>
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+    <div style="margin-top: 15px;">
+        <form method="POST" action="{{ url_for('update_server') }}" class="inline-form" onsubmit="return confirm('This will update TShock and restart the server. Continue?');">
+            <button type="submit" class="btn {{ 'btn-warning' if version.update_available else 'btn-secondary' }}">
+                {{ 'Update Now' if version.update_available else 'Force Update' }}
+            </button>
+        </form>
+        <span style="color: var(--text-muted); margin-left: 15px; font-size: 0.9rem;">
+            Auto-updates daily at 4 AM
+        </span>
+    </div>
+</div>
+
+<div class="card">
     <div class="card-title">Connection Info</div>
     <p>Players can connect to: <code style="background: var(--bg-input); padding: 5px 10px; border-radius: 4px;">
         your-server-ip:{{ server_config.get('port', '7777') }}

@@ -286,7 +286,8 @@ def config():
             except:
                 pass
 
-    return render_template('config.html', server_config=server_config, tshock_config=tshock_config)
+    version_info = get_version_info()
+    return render_template('config.html', server_config=server_config, tshock_config=tshock_config, version=version_info)
 
 
 @app.route('/config/save', methods=['POST'])
@@ -341,6 +342,54 @@ def server_control(action):
     return redirect(url_for('dashboard'))
 
 
+# ============== Update ==============
+
+def get_version_info():
+    """Get current and latest TShock versions"""
+    current = "unknown"
+    version_file = os.path.join(TERRARIA_DIR, '.tshock_version')
+    if os.path.exists(version_file):
+        with open(version_file) as f:
+            current = f.read().strip()
+
+    latest = "unknown"
+    try:
+        resp = requests.get('https://api.github.com/repos/Pryaxis/TShock/releases/latest', timeout=5)
+        if resp.ok:
+            latest = resp.json().get('tag_name', 'unknown')
+    except:
+        pass
+
+    return {'current': current, 'latest': latest, 'update_available': current != latest and latest != 'unknown'}
+
+
+@app.route('/update', methods=['POST'])
+@login_required
+def update_server():
+    """Run update script"""
+    update_script = os.path.join(TERRARIA_DIR, 'update.sh')
+    if not os.path.exists(update_script):
+        flash('Update script not found', 'error')
+        return redirect(url_for('config'))
+
+    try:
+        result = subprocess.run(
+            ['/bin/bash', update_script],
+            capture_output=True, text=True, timeout=300,
+            cwd=TERRARIA_DIR
+        )
+        if result.returncode == 0:
+            flash('Update completed successfully!', 'success')
+        else:
+            flash(f'Update failed: {result.stderr or result.stdout}', 'error')
+    except subprocess.TimeoutExpired:
+        flash('Update timed out', 'error')
+    except Exception as e:
+        flash(f'Update error: {e}', 'error')
+
+    return redirect(url_for('config'))
+
+
 # ============== API Endpoints ==============
 
 @app.route('/api/status')
@@ -353,6 +402,12 @@ def api_status():
 @login_required
 def api_players():
     return jsonify(get_players())
+
+
+@app.route('/api/version')
+@login_required
+def api_version():
+    return jsonify(get_version_info())
 
 
 # ============== Main ==============

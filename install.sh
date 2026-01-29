@@ -161,6 +161,13 @@ if [ "$NEED_DOWNLOAD" = true ]; then
         chmod +x "$SERVER_BIN"
         echo "$SERVER_BIN" > "$INSTALL_DIR/.server_bin"
         echo "Server binary: $SERVER_BIN"
+
+        # Save installed version
+        INSTALLED_VERSION=$(curl -s https://api.github.com/repos/Pryaxis/TShock/releases/latest | jq -r '.tag_name')
+        if [ -n "$INSTALLED_VERSION" ] && [ "$INSTALLED_VERSION" != "null" ]; then
+            echo "$INSTALLED_VERSION" > "$INSTALL_DIR/.tshock_version"
+            echo "TShock version: $INSTALLED_VERSION"
+        fi
     else
         echo "ERROR: Could not find server binary!"
         ls -la "$INSTALL_DIR/"
@@ -474,6 +481,27 @@ fi
 # Enable services (idempotent)
 systemctl enable terraria 2>/dev/null || true
 systemctl enable terraria-admin 2>/dev/null || true
+
+# Copy update script
+if [ -f "$SCRIPT_DIR/update.sh" ]; then
+    cp "$SCRIPT_DIR/update.sh" "$INSTALL_DIR/update.sh"
+    chmod +x "$INSTALL_DIR/update.sh"
+    chown "$SERVER_USER:$SERVER_USER" "$INSTALL_DIR/update.sh"
+    echo "Installed: update.sh"
+fi
+
+# Setup auto-update cron (daily at 4 AM, only if not exists)
+CRON_FILE="/etc/cron.d/terraria-update"
+if [ ! -f "$CRON_FILE" ]; then
+    cat > "$CRON_FILE" << EOF
+# Auto-update TShock daily at 4 AM
+0 4 * * * root $INSTALL_DIR/update.sh >> /var/log/terraria-update.log 2>&1
+EOF
+    chmod 644 "$CRON_FILE"
+    echo "Created: cron job for daily auto-update (4 AM)"
+else
+    echo "Exists: cron job for auto-update"
+fi
 
 # Restart running services to apply changes
 echo ""
