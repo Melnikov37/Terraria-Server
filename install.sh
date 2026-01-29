@@ -344,6 +344,18 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
+# Copy admin files first
+cp -r "$(dirname "$0")/admin/"* "$INSTALL_DIR/admin/" 2>/dev/null || true
+
+# Create Python virtual environment
+echo "Creating Python virtual environment..."
+apt-get install -y python3-venv python3-full
+python3 -m venv "$INSTALL_DIR/admin/venv"
+"$INSTALL_DIR/admin/venv/bin/pip" install --upgrade pip
+"$INSTALL_DIR/admin/venv/bin/pip" install flask gunicorn requests python-dotenv
+
+chown -R "$SERVER_USER:$SERVER_USER" "$INSTALL_DIR/admin"
+
 # Create systemd service for web admin
 cat > /etc/systemd/system/terraria-admin.service << EOF
 [Unit]
@@ -355,7 +367,7 @@ Type=simple
 User=$SERVER_USER
 WorkingDirectory=$INSTALL_DIR/admin
 EnvironmentFile=$INSTALL_DIR/admin/.env
-ExecStart=/usr/bin/python3 $INSTALL_DIR/admin/app.py
+ExecStart=$INSTALL_DIR/admin/venv/bin/python $INSTALL_DIR/admin/app.py
 Restart=on-failure
 RestartSec=5
 
@@ -366,13 +378,6 @@ EOF
 systemctl daemon-reload
 systemctl enable terraria
 systemctl enable terraria-admin
-
-# Copy admin files
-cp -r "$(dirname "$0")/admin/"* "$INSTALL_DIR/admin/" 2>/dev/null || true
-chown -R "$SERVER_USER:$SERVER_USER" "$INSTALL_DIR/admin"
-
-# Install Python dependencies
-pip3 install flask gunicorn requests python-dotenv
 
 echo ""
 echo "=========================================="
