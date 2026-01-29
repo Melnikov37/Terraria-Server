@@ -1,20 +1,18 @@
 #!/bin/bash
 
-# TShock Terraria Server Installation Script for Linux (Debian/Ubuntu)
-# Configured for "vanilla-like" experience with full web management
+# TShock Terraria Server Installation Script
+# IDEMPOTENT: Safe to run multiple times, only adds missing components
 
 set -e
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/terraria}"
 SERVER_USER="${SERVER_USER:-terraria}"
-TSHOCK_VERSION="${TSHOCK_VERSION:-v5.2.0}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(openssl rand -hex 16)}"
-REST_TOKEN="${REST_TOKEN:-$(openssl rand -hex 32)}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "=== TShock Terraria Server Installation ==="
 echo "Install directory: $INSTALL_DIR"
 echo "Server user: $SERVER_USER"
-echo "TShock version: $TSHOCK_VERSION"
+echo "Mode: Idempotent (safe to re-run)"
 echo ""
 
 # Check if running as root
@@ -23,105 +21,155 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Install dependencies
-echo "[1/8] Installing dependencies..."
-apt-get update
-apt-get install -y wget unzip screen curl jq python3 python3-pip
+# ============================================================
+# STEP 1: Install system dependencies (idempotent by default)
+# ============================================================
+echo "[1/8] Checking system dependencies..."
 
-# Install .NET Runtime (required for TShock)
-echo "[2/8] Installing .NET Runtime..."
+PACKAGES="wget unzip screen curl jq python3 python3-venv python3-full"
+MISSING=""
+
+for pkg in $PACKAGES; do
+    if ! dpkg -l | grep -q "^ii  $pkg "; then
+        MISSING="$MISSING $pkg"
+    fi
+done
+
+if [ -n "$MISSING" ]; then
+    echo "Installing missing packages:$MISSING"
+    apt-get update
+    apt-get install -y $MISSING
+else
+    echo "All system packages already installed"
+fi
+
+# ============================================================
+# STEP 2: Install .NET Runtime
+# ============================================================
+echo "[2/8] Checking .NET Runtime..."
+
 if ! command -v dotnet &> /dev/null; then
-    wget https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
+    echo "Installing .NET Runtime..."
+    wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
     chmod +x /tmp/dotnet-install.sh
     /tmp/dotnet-install.sh --channel 8.0 --runtime dotnet --install-dir /usr/share/dotnet
     ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet
-    echo "export DOTNET_ROOT=/usr/share/dotnet" >> /etc/profile.d/dotnet.sh
+
+    if [ ! -f /etc/profile.d/dotnet.sh ]; then
+        echo "export DOTNET_ROOT=/usr/share/dotnet" > /etc/profile.d/dotnet.sh
+    fi
     export DOTNET_ROOT=/usr/share/dotnet
+    rm -f /tmp/dotnet-install.sh
 else
-    echo ".NET Runtime already installed"
+    echo ".NET Runtime already installed: $(dotnet --version 2>/dev/null || echo 'unknown version')"
 fi
 
-# Create server user if doesn't exist
-echo "[3/8] Creating server user..."
+# ============================================================
+# STEP 3: Create server user
+# ============================================================
+echo "[3/8] Checking server user..."
+
 if ! id "$SERVER_USER" &>/dev/null; then
     useradd -r -m -d "$INSTALL_DIR" -s /bin/bash "$SERVER_USER"
-    echo "User '$SERVER_USER' created"
+    echo "Created user: $SERVER_USER"
 else
-    echo "User '$SERVER_USER' already exists"
+    echo "User already exists: $SERVER_USER"
 fi
 
-# Create install directory
-echo "[4/8] Creating install directory..."
-mkdir -p "$INSTALL_DIR"
+# ============================================================
+# STEP 4: Create directories
+# ============================================================
+echo "[4/8] Checking directories..."
 
-# Download TShock
-echo "[5/8] Downloading TShock $TSHOCK_VERSION..."
-cd /tmp
+for dir in "$INSTALL_DIR" "$INSTALL_DIR/worlds" "$INSTALL_DIR/tshock" "$INSTALL_DIR/ServerPlugins" "$INSTALL_DIR/admin" "$INSTALL_DIR/admin/templates"; do
+    if [ ! -d "$dir" ]; then
+        mkdir -p "$dir"
+        echo "Created: $dir"
+    fi
+done
 
-# Get latest release URL from GitHub API
-DOWNLOAD_URL=$(curl -s https://api.github.com/repos/Pryaxis/TShock/releases/latest | jq -r '.assets[] | select(.name | contains("linux")) | .browser_download_url' | head -1)
+# ============================================================
+# STEP 5: Download TShock (only if not present or update requested)
+# ============================================================
+echo "[5/8] Checking TShock installation..."
 
-if [ -z "$DOWNLOAD_URL" ]; then
-    echo "Error: Could not find TShock download URL"
-    exit 1
-fi
+NEED_DOWNLOAD=false
 
-echo "Downloading from: $DOWNLOAD_URL"
-wget -q --show-progress -O tshock-download.zip "$DOWNLOAD_URL"
-
-# Extract server files
-echo "[6/8] Extracting TShock files..."
-rm -rf tshock-extract
-mkdir -p tshock-extract
-unzip -o tshock-download.zip -d tshock-extract
-
-# Handle .tar inside .zip (new TShock packaging)
-TAR_FILE=$(find tshock-extract -name "*.tar" -type f 2>/dev/null | head -1)
-if [ -n "$TAR_FILE" ]; then
-    echo "Found tar archive: $TAR_FILE"
-    tar -xf "$TAR_FILE" -C "$INSTALL_DIR/"
+if [ ! -f "$INSTALL_DIR/.server_bin" ]; then
+    NEED_DOWNLOAD=true
+    echo "TShock not found, will download..."
+elif [ "$1" = "--update" ] || [ "$1" = "-u" ]; then
+    NEED_DOWNLOAD=true
+    echo "Update requested, will re-download TShock..."
 else
-    # Old style: files directly in zip or in subdirectory
-    SUBDIR=$(find tshock-extract -maxdepth 1 -type d -name "TShock*" | head -1)
-    if [ -n "$SUBDIR" ]; then
-        cp -r "$SUBDIR"/* "$INSTALL_DIR/"
+    SERVER_BIN=$(cat "$INSTALL_DIR/.server_bin" 2>/dev/null || echo "")
+    if [ ! -f "$SERVER_BIN" ]; then
+        NEED_DOWNLOAD=true
+        echo "Server binary missing, will re-download..."
     else
-        cp -r tshock-extract/* "$INSTALL_DIR/"
+        echo "TShock already installed: $SERVER_BIN"
     fi
 fi
 
-# Find and make server executable
-SERVER_BIN=$(find "$INSTALL_DIR" -name "TShock.Server" -type f 2>/dev/null | head -1)
-if [ -z "$SERVER_BIN" ]; then
-    SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer.bin.x86_64" -type f 2>/dev/null | head -1)
+if [ "$NEED_DOWNLOAD" = true ]; then
+    cd /tmp
+
+    # Get latest release URL
+    DOWNLOAD_URL=$(curl -s https://api.github.com/repos/Pryaxis/TShock/releases/latest | jq -r '.assets[] | select(.name | contains("linux")) | .browser_download_url' | head -1)
+
+    if [ -z "$DOWNLOAD_URL" ]; then
+        echo "Error: Could not find TShock download URL"
+        exit 1
+    fi
+
+    echo "Downloading: $DOWNLOAD_URL"
+    wget -q --show-progress -O tshock-download.zip "$DOWNLOAD_URL"
+
+    # Extract
+    rm -rf tshock-extract
+    mkdir -p tshock-extract
+    unzip -o tshock-download.zip -d tshock-extract
+
+    # Handle .tar inside .zip
+    TAR_FILE=$(find tshock-extract -name "*.tar" -type f 2>/dev/null | head -1)
+    if [ -n "$TAR_FILE" ]; then
+        echo "Extracting tar: $TAR_FILE"
+        tar -xf "$TAR_FILE" -C "$INSTALL_DIR/"
+    else
+        SUBDIR=$(find tshock-extract -maxdepth 1 -type d -name "TShock*" | head -1)
+        if [ -n "$SUBDIR" ]; then
+            cp -r "$SUBDIR"/* "$INSTALL_DIR/"
+        else
+            cp -r tshock-extract/* "$INSTALL_DIR/"
+        fi
+    fi
+
+    # Find server binary
+    SERVER_BIN=$(find "$INSTALL_DIR" -name "TShock.Server" -type f 2>/dev/null | head -1)
+    [ -z "$SERVER_BIN" ] && SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer.bin.x86_64" -type f 2>/dev/null | head -1)
+    [ -z "$SERVER_BIN" ] && SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer" -type f -executable 2>/dev/null | head -1)
+
+    if [ -n "$SERVER_BIN" ]; then
+        chmod +x "$SERVER_BIN"
+        echo "$SERVER_BIN" > "$INSTALL_DIR/.server_bin"
+        echo "Server binary: $SERVER_BIN"
+    else
+        echo "ERROR: Could not find server binary!"
+        ls -la "$INSTALL_DIR/"
+        exit 1
+    fi
+
+    rm -rf tshock-download.zip tshock-extract
 fi
-if [ -z "$SERVER_BIN" ]; then
-    SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer" -type f -executable 2>/dev/null | head -1)
-fi
 
-if [ -n "$SERVER_BIN" ]; then
-    chmod +x "$SERVER_BIN"
-    echo "Server binary: $SERVER_BIN"
-    # Save path for systemd service
-    echo "$SERVER_BIN" > "$INSTALL_DIR/.server_bin"
-else
-    echo "ERROR: Could not find server binary!"
-    echo "Contents of $INSTALL_DIR:"
-    ls -la "$INSTALL_DIR/"
-    exit 1
-fi
+# ============================================================
+# STEP 6: Create configuration files (only if not exist)
+# ============================================================
+echo "[6/8] Checking configuration files..."
 
-rm -rf tshock-download.zip tshock-extract
-
-# Create directories
-mkdir -p "$INSTALL_DIR/worlds"
-mkdir -p "$INSTALL_DIR/tshock"
-mkdir -p "$INSTALL_DIR/ServerPlugins"
-mkdir -p "$INSTALL_DIR/admin"
-
-# Create server config
-echo "[7/8] Creating configuration files..."
-cat > "$INSTALL_DIR/serverconfig.txt" << 'EOF'
+# Server config
+if [ ! -f "$INSTALL_DIR/serverconfig.txt" ]; then
+    cat > "$INSTALL_DIR/serverconfig.txt" << 'EOF'
 # TShock Server Configuration (Vanilla-like)
 world=/opt/terraria/worlds/world1.wld
 autocreate=2
@@ -138,9 +186,17 @@ upnp=0
 npcstream=60
 priority=1
 EOF
+    echo "Created: serverconfig.txt"
+else
+    echo "Exists: serverconfig.txt (not modified)"
+fi
 
-# Create TShock config for vanilla-like experience
-cat > "$INSTALL_DIR/tshock/config.json" << EOF
+# TShock config - only create if not exists
+if [ ! -f "$INSTALL_DIR/tshock/config.json" ]; then
+    # Generate tokens only for new installation
+    REST_TOKEN=$(openssl rand -hex 32)
+
+    cat > "$INSTALL_DIR/tshock/config.json" << EOF
 {
   "Settings": {
     "ServerPassword": "",
@@ -153,68 +209,51 @@ cat > "$INSTALL_DIR/tshock/config.json" << EOF
     "DebugLogs": false,
     "DisableLoginBeforeJoin": false,
     "IgnoreChestStacksOnLoad": false,
-
     "AutoSave": true,
     "AutoSaveInterval": 10,
     "AnnounceSave": false,
-
     "EnableWhitelist": false,
     "WhitelistKickReason": "You are not on the whitelist.",
-
     "HardcoreOnly": false,
     "MediumcoreOnly": false,
     "SoftcoreOnly": false,
-
     "DisableBuild": false,
     "DisableClownBombs": false,
     "DisableDungeonGuardian": false,
     "DisableInvisPvP": false,
     "DisableSnowBalls": false,
     "DisableTombstones": false,
-
     "ForceTime": "normal",
     "PvPMode": "normal",
     "SpawnProtection": false,
     "SpawnProtectionRadius": 10,
     "RangeChecks": true,
-    "HardcoreBanReason": "Death results in a ban",
-    "HardcoreKickReason": "Death results in a kick",
-    "MediumcoreBanReason": "Death results in a ban",
-    "MediumcoreKickReason": "Death results in a kick",
-
     "AnonymousBossInvasions": true,
     "MaxHP": 500,
     "MaxMP": 200,
     "BombExplosionRadius": 5,
-
     "DefaultRegistrationGroupName": "default",
     "DefaultGuestGroupName": "guest",
     "RememberLeavePos": false,
     "MaximumLoginAttempts": 3,
     "KickOnMediumcoreDeath": false,
     "BanOnMediumcoreDeath": false,
-
     "RequireLogin": false,
     "AllowLoginAnyUsername": true,
     "AllowRegisterAnyUsername": true,
-
     "DisableUUIDLogin": false,
     "KickEmptyUUID": false,
     "DisableSpewLogs": true,
     "HashAlgorithm": "sha512",
     "BCryptWorkFactor": 7,
-    "DisablePrimaryUUIDLogin": false,
-
     "RESTApiEnabled": true,
     "RESTApiPort": 7878,
-    "RESTRequestBucketDecreaseIntervalMinutes": 1,
     "RESTRequestBucketDecreaseIntervalMinutes": 1,
     "RESTLimitOnlyFailedLoginRequests": true,
     "RESTMaximumRequestsPerInterval": 5,
     "LogRest": false,
     "EnableTokenEndpointAuthentication": false,
     "RESTMaximumRequestBodySize": 8000,
-
     "ApplicationRestTokens": {
       "web-admin": {
         "Username": "web-admin",
@@ -222,18 +261,10 @@ cat > "$INSTALL_DIR/tshock/config.json" << EOF
         "Token": "${REST_TOKEN}"
       }
     },
-
     "BroadcastRGB": [127, 255, 212],
     "StorageType": "sqlite",
     "SqliteDBPath": "tshock/tshock.sqlite",
-    "MySqlHost": "localhost:3306",
-    "MySqlDbName": "",
-    "MySqlUsername": "",
-    "MySqlPassword": "",
-
     "UseSqlLogs": false,
-    "RevertToTextLogsOnSqlFailures": 10,
-
     "PreventBannedItemSpawn": false,
     "PreventDeadModification": true,
     "PreventInvalidPlaceStyle": true,
@@ -244,18 +275,14 @@ cat > "$INSTALL_DIR/tshock/config.json" << EOF
     "AllowCrimsonCreep": true,
     "AllowCorruptionCreep": true,
     "AllowHallowCreep": true,
-
     "StatueSpawn200": 3,
     "StatueSpawn600": 6,
     "StatueSpawnWorld": 10,
-    "PreventBannedItemSpawn": false,
-
     "CommandSpecifier": "/",
     "CommandSilentSpecifier": ".",
     "KickOnHardcoreDeath": false,
     "BanOnHardcoreDeath": false,
     "DisableDefaultIPBan": false,
-    "EnableDNSHostResolution": false,
     "EnableIPBans": true,
     "EnableUUIDBans": true,
     "EnableBanOnUsernames": false,
@@ -268,62 +295,96 @@ cat > "$INSTALL_DIR/tshock/config.json" << EOF
     "DisplayIPToAdmins": false,
     "ChatFormat": "{1}{2}{3}: {4}",
     "ChatAboveHeadsFormat": "{2}",
-    "AvailableSlotNotification": false,
-    "AvailableSlotsNotification": false,
-
-    "CommandTextColor": [255, 255, 0],
-
     "SuppressPermissionFailureNotices": true,
     "DisableSecondUpdateLogs": true,
     "SuperAdminChatRGB": [255, 255, 255],
     "SuperAdminChatPrefix": "",
     "SuperAdminChatSuffix": "",
-
-    "DisableModifiedArmorCheck": false,
-    "DisableViableCrystalCheck": false,
-    "DisableTileKillCheck": false,
-    "DisableTilePlaceCheck": false,
-    "DisableBuilderCheck": false,
-    "DisableGuardCheck": false,
-    "DisableFireCheck": false,
-    "DisableHardmodeCheck": false,
-    "DisableTileRangeCheck": false,
-    "DisableDamageCheck": false,
-    "DisableEmoteCheck": false,
-    "DisablePossibleExplosionCheck": false,
-    "DisableNPCSpawnCheck": false,
-    "DisableProjectileCheck": false,
-    "DisableHealOtherCheck": false,
-    "DisablePlaceUnfitCheck": false,
-    "DisablePortalCheck": false,
-    "DisableHostilePossessionCheck": false,
-
     "ShowBackupAutosaveMessages": false
   }
 }
 EOF
+    echo "Created: tshock/config.json"
+    echo "REST_TOKEN=$REST_TOKEN" > "$INSTALL_DIR/.rest_token"
+else
+    echo "Exists: tshock/config.json (not modified)"
+    # Extract existing REST token for admin .env
+    REST_TOKEN=$(grep -o '"Token": "[^"]*"' "$INSTALL_DIR/tshock/config.json" | head -1 | cut -d'"' -f4 || cat "$INSTALL_DIR/.rest_token" 2>/dev/null | cut -d= -f2 || echo "")
+fi
 
-# Create credentials file for web admin
-cat > "$INSTALL_DIR/admin/.env" << EOF
+# Admin .env file
+if [ ! -f "$INSTALL_DIR/admin/.env" ]; then
+    ADMIN_PASSWORD=$(openssl rand -hex 16)
+    SECRET_KEY=$(openssl rand -hex 32)
+
+    # Use existing REST_TOKEN if available
+    if [ -z "$REST_TOKEN" ]; then
+        REST_TOKEN=$(openssl rand -hex 32)
+        echo "Warning: Generated new REST token. Update tshock/config.json manually."
+    fi
+
+    cat > "$INSTALL_DIR/admin/.env" << EOF
 TERRARIA_DIR=$INSTALL_DIR
 REST_TOKEN=$REST_TOKEN
 REST_URL=http://127.0.0.1:7878
-SECRET_KEY=$(openssl rand -hex 32)
+SECRET_KEY=$SECRET_KEY
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=$ADMIN_PASSWORD
 EOF
+    chmod 600 "$INSTALL_DIR/admin/.env"
+    echo "Created: admin/.env"
+    echo ""
+    echo "========================================"
+    echo "  NEW ADMIN CREDENTIALS GENERATED"
+    echo "========================================"
+    echo "  Username: admin"
+    echo "  Password: $ADMIN_PASSWORD"
+    echo "========================================"
+    echo ""
+else
+    echo "Exists: admin/.env (credentials preserved)"
+    ADMIN_PASSWORD="<existing - see $INSTALL_DIR/admin/.env>"
+fi
 
-# Set permissions
+# ============================================================
+# STEP 7: Setup Python venv and copy admin files
+# ============================================================
+echo "[7/8] Checking Python environment and admin files..."
+
+# Copy admin files (always update code, but not .env)
+if [ -d "$SCRIPT_DIR/admin" ]; then
+    # Copy all except .env and venv
+    find "$SCRIPT_DIR/admin" -maxdepth 1 -type f ! -name ".env" -exec cp {} "$INSTALL_DIR/admin/" \;
+    cp -r "$SCRIPT_DIR/admin/templates/"* "$INSTALL_DIR/admin/templates/" 2>/dev/null || true
+    echo "Updated admin panel files"
+fi
+
+# Create venv if not exists
+if [ ! -d "$INSTALL_DIR/admin/venv" ]; then
+    echo "Creating Python virtual environment..."
+    python3 -m venv "$INSTALL_DIR/admin/venv"
+    "$INSTALL_DIR/admin/venv/bin/pip" install --upgrade pip
+    "$INSTALL_DIR/admin/venv/bin/pip" install flask gunicorn requests python-dotenv
+    echo "Created: admin/venv"
+else
+    echo "Exists: admin/venv"
+    # Update packages
+    "$INSTALL_DIR/admin/venv/bin/pip" install -q --upgrade flask gunicorn requests python-dotenv 2>/dev/null || true
+fi
+
+# Fix ownership
 chown -R "$SERVER_USER:$SERVER_USER" "$INSTALL_DIR"
-chmod 600 "$INSTALL_DIR/admin/.env"
 
-# Create systemd service for TShock
-echo "[8/8] Creating systemd services..."
+# ============================================================
+# STEP 8: Setup systemd services and sudoers
+# ============================================================
+echo "[8/8] Checking systemd services..."
 
-# Read server binary path
 SERVER_BIN=$(cat "$INSTALL_DIR/.server_bin")
 
-cat > /etc/systemd/system/terraria.service << EOF
+# Terraria service
+if [ ! -f /etc/systemd/system/terraria.service ] || [ "$1" = "--update" ]; then
+    cat > /etc/systemd/system/terraria.service << EOF
 [Unit]
 Description=TShock Terraria Server
 After=network.target
@@ -343,21 +404,15 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
+    echo "Created/Updated: terraria.service"
+    RELOAD_SYSTEMD=true
+else
+    echo "Exists: terraria.service"
+fi
 
-# Copy admin files first
-cp -r "$(dirname "$0")/admin/"* "$INSTALL_DIR/admin/" 2>/dev/null || true
-
-# Create Python virtual environment
-echo "Creating Python virtual environment..."
-apt-get install -y python3-venv python3-full
-python3 -m venv "$INSTALL_DIR/admin/venv"
-"$INSTALL_DIR/admin/venv/bin/pip" install --upgrade pip
-"$INSTALL_DIR/admin/venv/bin/pip" install flask gunicorn requests python-dotenv
-
-chown -R "$SERVER_USER:$SERVER_USER" "$INSTALL_DIR/admin"
-
-# Create systemd service for web admin
-cat > /etc/systemd/system/terraria-admin.service << EOF
+# Admin service
+if [ ! -f /etc/systemd/system/terraria-admin.service ] || [ "$1" = "--update" ]; then
+    cat > /etc/systemd/system/terraria-admin.service << EOF
 [Unit]
 Description=Terraria Web Admin Panel
 After=network.target terraria.service
@@ -374,14 +429,15 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
+    echo "Created/Updated: terraria-admin.service"
+    RELOAD_SYSTEMD=true
+else
+    echo "Exists: terraria-admin.service"
+fi
 
-systemctl daemon-reload
-systemctl enable terraria
-systemctl enable terraria-admin
-
-# Allow terraria user to control services without password
-echo "Configuring sudo permissions..."
-cat > /etc/sudoers.d/terraria << EOF
+# Sudoers
+if [ ! -f /etc/sudoers.d/terraria ]; then
+    cat > /etc/sudoers.d/terraria << EOF
 # Allow terraria user to manage terraria services without password
 $SERVER_USER ALL=(ALL) NOPASSWD: /bin/systemctl start terraria
 $SERVER_USER ALL=(ALL) NOPASSWD: /bin/systemctl stop terraria
@@ -392,31 +448,41 @@ $SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop terraria
 $SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart terraria
 $SERVER_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl status terraria
 EOF
-chmod 440 /etc/sudoers.d/terraria
+    chmod 440 /etc/sudoers.d/terraria
+    echo "Created: sudoers.d/terraria"
+else
+    echo "Exists: sudoers.d/terraria"
+fi
+
+# Reload systemd if needed
+if [ "$RELOAD_SYSTEMD" = true ]; then
+    systemctl daemon-reload
+fi
+
+# Enable services (idempotent)
+systemctl enable terraria 2>/dev/null || true
+systemctl enable terraria-admin 2>/dev/null || true
 
 echo ""
 echo "=========================================="
 echo "    Installation Complete!"
 echo "=========================================="
 echo ""
-echo "Server configured for VANILLA-LIKE experience:"
-echo "  - No login/registration required"
-echo "  - No TShock messages visible to players"
-echo "  - All management via Web Admin"
+echo "Server: $INSTALL_DIR"
+echo "Config: $INSTALL_DIR/serverconfig.txt"
+echo "Worlds: $INSTALL_DIR/worlds/"
 echo ""
-echo "Web Admin Credentials:"
+echo "Web Admin:"
 echo "  URL:      http://your-server-ip:5000"
 echo "  Username: admin"
 echo "  Password: $ADMIN_PASSWORD"
-echo ""
-echo "SAVE THESE CREDENTIALS! They are stored in:"
-echo "  $INSTALL_DIR/admin/.env"
 echo ""
 echo "Commands:"
 echo "  sudo systemctl start terraria        # Start game server"
 echo "  sudo systemctl start terraria-admin  # Start web admin"
 echo "  sudo systemctl status terraria       # Check status"
 echo ""
-echo "Quick start:"
-echo "  sudo systemctl start terraria && sudo systemctl start terraria-admin"
+echo "Re-run options:"
+echo "  ./install.sh           # Safe re-run, preserves configs"
+echo "  ./install.sh --update  # Re-download TShock & update services"
 echo ""
