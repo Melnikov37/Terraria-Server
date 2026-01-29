@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Terraria server files (runtime)
+*.wld
+*.wld.bak
+*.plr
+*.bak
+tshock/
+ServerPlugins/*.dll
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terraria Server Admin</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --accent: #e94560;
+            --accent-hover: #ff6b6b;
+            --text: #eaeaea;
+            --text-muted: #a0a0a0;
+            --success: #4ade80;
+            --error: #f87171;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: var(--bg-secondary);
+            padding: 20px 0;
+            margin-bottom: 30px;
+            border-bottom: 3px solid var(--accent);
+        }
+
+        header h1 {
+            text-align: center;
+            font-size: 2rem;
+            color: var(--accent);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            color: var(--accent);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .status-panel {
+            text-align: center;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.running { background: var(--success); }
+        .status-indicator.stopped { background: var(--error); animation: none; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+        }
+
+        .btn-success { background: var(--success); color: #1a1a2e; }
+        .btn-danger { background: var(--error); color: white; }
+        .btn-secondary { background: #4a5568; color: white; }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 4px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="password"],
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            background: var(--bg-secondary);
+            color: var(--text);
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+
+        .flash {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .flash.success { background: rgba(74, 222, 128, 0.2); border: 1px solid var(--success); }
+        .flash.error { background: rgba(248, 113, 113, 0.2); border: 1px solid var(--error); }
+
+        .worlds-list {
+            list-style: none;
+        }
+
+        .worlds-list li {
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .world-name { font-weight: 500; }
+        .world-size { color: var(--text-muted); font-size: 0.9rem; }
+
+        .section-title {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 25px 0 15px 0;
+        }
+
+        .section-title:first-child {
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Terraria Server Admin</h1>
+        </div>
+    </header>
+
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <div class="grid">
+            <div class="main-content">
+                <div class="card">
+                    <h2>Server Configuration</h2>
+                    <form method="POST" action="{{ url_for('save_config') }}">
+                        <div class="section-title">World Settings</div>
+
+                        {% for key in ['world', 'autocreate', 'worldname', 'difficulty', 'worldpath'] %}
+                            {% set opt = options[key] %}
+                            <div class="form-group">
+                                <label for="{{ key }}">{{ opt.label }}</label>
+                                {% if opt.type == 'select' %}
+                                    <select name="{{ key }}" id="{{ key }}">
+                                        {% for val, label in opt.options %}
+                                            <option value="{{ val }}" {% if config.get(key) == val %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                {% elif opt.type == 'number' %}
+                                    <input type="number" name="{{ key }}" id="{{ key }}"
+                                           value="{{ config.get(key, '') }}"
+                                           min="{{ opt.get('min', '') }}"
+                                           max="{{ opt.get('max', '') }}">
+                                {% else %}
+                                    <input type="{{ opt.type }}" name="{{ key }}" id="{{ key }}"
+                                           value="{{ config.get(key, '') }}">
+                                {% endif %}
+                                <small>{{ opt.description }}</small>
+                            </div>
+                        {% endfor %}
+
+                        <div class="section-title">Server Settings</div>
+
+                        {% for key in ['maxplayers', 'port', 'password', 'motd'] %}
+                            {% set opt = options[key] %}
+                            <div class="form-group">
+                                <label for="{{ key }}">{{ opt.label }}</label>
+                                {% if opt.type == 'number' %}
+                                    <input type="number" name="{{ key }}" id="{{ key }}"
+                                           value="{{ config.get(key, '') }}"
+                                           min="{{ opt.get('min', '') }}"
+                                           max="{{ opt.get('max', '') }}">
+                                {% else %}
+                                    <input type="{{ opt.type }}" name="{{ key }}" id="{{ key }}"
+                                           value="{{ config.get(key, '') }}">
+                                {% endif %}
+                                <small>{{ opt.description }}</small>
+                            </div>
+                        {% endfor %}
+
+                        <div class="section-title">Advanced Settings</div>
+
+                        {% for key in ['secure', 'language', 'upnp', 'npcstream', 'priority'] %}
+                            {% set opt = options[key] %}
+                            <div class="form-group">
+                                <label for="{{ key }}">{{ opt.label }}</label>
+                                {% if opt.type == 'select' %}
+                                    <select name="{{ key }}" id="{{ key }}">
+                                        {% for val, label in opt.options %}
+                                            <option value="{{ val }}" {% if config.get(key) == val %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                {% elif opt.type == 'number' %}
+                                    <input type="number" name="{{ key }}" id="{{ key }}"
+                                           value="{{ config.get(key, '') }}"
+                                           min="{{ opt.get('min', '') }}"
+                                           max="{{ opt.get('max', '') }}">
+                                {% else %}
+                                    <input type="{{ opt.type }}" name="{{ key }}" id="{{ key }}"
+                                           value="{{ config.get(key, '') }}">
+                                {% endif %}
+                                <small>{{ opt.description }}</small>
+                            </div>
+                        {% endfor %}
+
+                        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">
+                            Save Configuration
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="card status-panel">
+                    <h2>Server Status</h2>
+                    <div style="margin: 20px 0;">
+                        <span class="status-indicator {{ 'running' if status.running else 'stopped' }}"></span>
+                        <span class="status-text">{{ status.status }}</span>
+                    </div>
+                    <div class="btn-group">
+                        {% if status.running %}
+                            <form method="POST" action="{{ url_for('server_control', action='stop') }}" style="display:inline;">
+                                <button type="submit" class="btn btn-danger">Stop</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('server_control', action='restart') }}" style="display:inline;">
+                                <button type="submit" class="btn btn-secondary">Restart</button>
+                            </form>
+                        {% else %}
+                            <form method="POST" action="{{ url_for('server_control', action='start') }}" style="display:inline;">
+                                <button type="submit" class="btn btn-success">Start Server</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Worlds</h2>
+                    {% if worlds %}
+                        <ul class="worlds-list">
+                            {% for world in worlds %}
+                                <li>
+                                    <span class="world-name">{{ world.name }}</span>
+                                    <span class="world-size">{{ world.size }} KB</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p style="color: var(--text-muted); text-align: center;">
+                            No worlds found.<br>
+                            Start the server to create one.
+                        </p>
+                    {% endif %}
+                </div>
+
+                <div class="card">
+                    <h2>Quick Info</h2>
+                    <p><strong>Port:</strong> {{ config.get('port', '7777') }}</p>
+                    <p><strong>Max Players:</strong> {{ config.get('maxplayers', '8') }}</p>
+                    <p><strong>Password:</strong> {{ 'Set' if config.get('password') else 'None' }}</p>
+                    <p style="margin-top: 15px; color: var(--text-muted); font-size: 0.9rem;">
+                        Connect: <code>your-server-ip:{{ config.get('port', '7777') }}</code>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-refresh status every 10 seconds
+        setInterval(async () => {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                const indicator = document.querySelector('.status-indicator');
+                const text = document.querySelector('.status-text');
+
+                indicator.className = 'status-indicator ' + (data.running ? 'running' : 'stopped');
+                text.textContent = data.status;
+            } catch (e) {}
+        }, 10000);
+    </script>
+</body>
+</html>
