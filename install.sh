@@ -167,6 +167,17 @@ elif [ "$FORCE_DOWNLOAD" = true ]; then
 elif [ "$CURRENT_TYPE" != "$SERVER_TYPE" ]; then
     NEED_DOWNLOAD=true
     echo "Server type changed: $CURRENT_TYPE -> $SERVER_TYPE"
+
+    # Clean up old server type files when switching
+    if [ "$CURRENT_TYPE" = "tshock" ] && [ "$SERVER_TYPE" = "vanilla" ]; then
+        echo "Cleaning up TShock files..."
+        rm -rf "$INSTALL_DIR/tshock" 2>/dev/null || true
+        rm -rf "$INSTALL_DIR/ServerPlugins" 2>/dev/null || true
+        rm -f "$INSTALL_DIR/.rest_token" 2>/dev/null || true
+        rm -f "$INSTALL_DIR/TShock.Server" 2>/dev/null || true
+        rm -f "$INSTALL_DIR/TShock"*.dll 2>/dev/null || true
+        rm -f "$INSTALL_DIR/OTAPI"*.dll 2>/dev/null || true
+    fi
 fi
 
 if [ "$NEED_DOWNLOAD" = true ]; then
