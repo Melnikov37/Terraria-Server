@@ -697,71 +697,81 @@ def _read_7bit_string(data, pos):
     return text, pos + length
 
 
-def _decompress_tmod_payload(raw, header_end):
-    """Try several strategies to decompress the tModLoader payload.
-
-    tModLoader 2022+ stores a 4-byte (uint32 LE) compressed-data-length field
-    immediately after the 276-byte header (20 hash + 256 sig).  Older builds
-    go straight to raw deflate.  We try the most-likely offset first so we
-    don't silently fall back to garbage data.
-
-    Returns decompressed bytes or None.
-    """
-    # candidate start offsets: +4 (length-prefixed, current format), +0 (legacy)
-    for skip in (4, 0):
-        start = header_end + skip
-        # raw deflate (wbits=-15) — used by tModLoader
+def _parse_tmod_build_txt(raw_bytes, is_compressed):
+    """Decode build.txt bytes (possibly deflate-compressed) and return modReferences."""
+    if is_compressed:
         try:
-            return zlib.decompress(raw[start:], wbits=-15)
+            raw_bytes = zlib.decompress(raw_bytes, wbits=-15)
         except zlib.error:
-            pass
-        # gzip wrapper — fallback for unusual builds
-        try:
-            import gzip
-            return gzip.decompress(raw[start:])
-        except Exception:
-            pass
-    return None
+            return []
+    for line in raw_bytes.decode('utf-8', errors='replace').splitlines():
+        line = line.strip()
+        if line.startswith('modReferences') and '=' in line:
+            raw_deps = line.split('=', 1)[1].strip()
+            return [d.strip() for d in raw_deps.split(',') if d.strip()]
+    return []
 
 
-def _parse_tmod_payload(payload):
-    """Walk the decompressed tModLoader payload and return modReferences list.
+def _parse_tmod_inner(raw, pos):
+    """Parse the signed data section of a .tmod file and return modReferences.
 
-    Payload layout (tModLoader ≤ 2025):
-      7-bit string  mod name
-      7-bit string  mod version
-      int32 LE      file count
-      per file:
-        7-bit string  file path/name
-        int32 LE      file size
-        N bytes       file data
+    Actual format (from TmodFile.cs in tModLoader source):
+
+      SIGNED DATA (not compressed at the outer level):
+        mod name        — 7-bit string
+        mod version     — 7-bit string
+        file count      — int32
+        FILE TABLE (all entries first):
+          name              — 7-bit string
+          uncompressed_len  — int32
+          compressed_len    — int32
+        FILE DATA (all bytes sequentially after the table):
+          file0 bytes (compressed_len0 bytes, deflate if uncompressed_len != compressed_len)
+          file1 bytes …
+
+    Individual files are deflate-compressed only if uncompressed_len != compressed_len.
     """
-    pos = 0
-    _, pos = _read_7bit_string(payload, pos)   # mod name
-    _, pos = _read_7bit_string(payload, pos)   # mod version
-    file_count = int.from_bytes(payload[pos:pos + 4], 'little')
+    _, pos = _read_7bit_string(raw, pos)   # mod name
+    _, pos = _read_7bit_string(raw, pos)   # mod version
+
+    file_count = int.from_bytes(raw[pos:pos + 4], 'little')
     pos += 4
 
+    # Read the entire file table first
+    entries = []
+    running_offset = 0
     for _ in range(file_count):
-        name, pos = _read_7bit_string(payload, pos)
-        length = int.from_bytes(payload[pos:pos + 4], 'little')
+        name, pos = _read_7bit_string(raw, pos)
+        uncompressed_len = int.from_bytes(raw[pos:pos + 4], 'little')
         pos += 4
-        file_data = payload[pos:pos + length]
-        pos += length
+        compressed_len = int.from_bytes(raw[pos:pos + 4], 'little')
+        pos += 4
+        entries.append((name, running_offset, uncompressed_len, compressed_len))
+        running_offset += compressed_len
 
+    # pos now points to start of file data section
+    file_data_start = pos
+
+    for name, offset, uncompressed_len, compressed_len in entries:
         if name == 'build.txt':
-            for line in file_data.decode('utf-8', errors='replace').splitlines():
-                line = line.strip()
-                if line.startswith('modReferences') and '=' in line:
-                    raw_deps = line.split('=', 1)[1].strip()
-                    return [d.strip() for d in raw_deps.split(',') if d.strip()]
-            return []  # build.txt present but no modReferences
+            start = file_data_start + offset
+            file_bytes = raw[start:start + compressed_len]
+            return _parse_tmod_build_txt(file_bytes, uncompressed_len != compressed_len)
 
     return []
 
 
 def _parse_tmod_dependencies(tmod_path):
-    """Return list of required mod names declared in build.txt of a .tmod file."""
+    """Return list of required mod names declared in build.txt of a .tmod file.
+
+    Format header:
+      "TMOD"         4 bytes
+      version        7-bit string
+      hash           20 bytes
+      signature      256 bytes
+      datalen        int32   (4 bytes)
+      [signed data]  datalen bytes — NOT compressed at the outer level
+    """
     try:
         with open(tmod_path, 'rb') as fh:
             raw = fh.read()
@@ -770,14 +780,11 @@ def _parse_tmod_dependencies(tmod_path):
             return []
 
         pos = 4
-        _, pos = _read_7bit_string(raw, pos)   # skip tML version string
-        pos += 20 + 256                         # skip SHA1 hash + signature
+        _, pos = _read_7bit_string(raw, pos)   # tML version
+        pos += 20 + 256                         # hash + signature
+        pos += 4                                # datalen (int32)
 
-        payload = _decompress_tmod_payload(raw, pos)
-        if payload is None:
-            return []
-
-        return _parse_tmod_payload(payload)
+        return _parse_tmod_inner(raw, pos)
 
     except Exception:
         pass
@@ -785,7 +792,7 @@ def _parse_tmod_dependencies(tmod_path):
 
 
 def _debug_tmod(tmod_path):
-    """Return a dict with diagnostic info about a .tmod file (for /api/mods/debug)."""
+    """Return diagnostic info about a .tmod file (for /api/mods/debug)."""
     result = {'path': tmod_path, 'exists': os.path.exists(tmod_path)}
     if not result['exists']:
         return result
@@ -801,23 +808,25 @@ def _debug_tmod(tmod_path):
         pos = 4
         tml_ver, pos = _read_7bit_string(raw, pos)
         result['tml_version'] = tml_ver
-        pos += 20 + 256  # skip hash + sig
-        result['header_end'] = pos
+        pos += 20 + 256  # hash + sig
 
-        # Try both offsets and record which worked
-        for skip in (4, 0):
-            start = pos + skip
-            label = f'+{skip}'
-            try:
-                payload = zlib.decompress(raw[start:], wbits=-15)
-                result['decompress_ok'] = True
-                result['decompress_offset'] = label
-                result['payload_size'] = len(payload)
-                result['dependencies'] = _parse_tmod_payload(payload)
-                return result
-            except zlib.error as e:
-                result[f'deflate{label}_error'] = str(e)
-        result['decompress_ok'] = False
+        data_len = int.from_bytes(raw[pos:pos + 4], 'little')
+        result['datalen'] = data_len
+        pos += 4
+
+        result['signed_data_start'] = pos
+        result['expected_file_size'] = pos + data_len
+        result['actual_file_size'] = len(raw)
+        result['size_match'] = (pos + data_len == len(raw))
+
+        try:
+            deps = _parse_tmod_inner(raw, pos)
+            result['parse_ok'] = True
+            result['dependencies'] = deps
+        except Exception as exc:
+            result['parse_ok'] = False
+            result['parse_error'] = str(exc)
+
     except Exception as exc:
         result['exception'] = str(exc)
     return result
