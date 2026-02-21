@@ -13,6 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Parse arguments
 SERVER_TYPE=""
 FORCE_DOWNLOAD=false
+CLEAN_INSTALL=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -29,6 +30,11 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --update|-u)
+            FORCE_DOWNLOAD=true
+            shift
+            ;;
+        --clean|-c)
+            CLEAN_INSTALL=true
             FORCE_DOWNLOAD=true
             shift
             ;;
@@ -71,12 +77,54 @@ echo "=== Terraria Server Installation ==="
 echo "Server type: $SERVER_TYPE"
 echo "Install directory: $INSTALL_DIR"
 echo "Server user: $SERVER_USER"
+[ "$CLEAN_INSTALL" = true ] && echo "Mode: CLEAN (wipe everything and reinstall)"
 echo ""
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
     echo "Error: Please run as root (sudo)"
     exit 1
+fi
+
+# ============================================================
+# CLEAN: Wipe everything and start fresh
+# ============================================================
+if [ "$CLEAN_INSTALL" = true ]; then
+    echo ">>> CLEAN INSTALL: removing all existing data..."
+    echo ""
+
+    # Stop and disable services
+    for svc in terraria-admin terraria; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            echo "Stopping $svc..."
+            systemctl stop "$svc" || true
+        fi
+        systemctl disable "$svc" 2>/dev/null || true
+    done
+
+    # Remove systemd service files
+    rm -f /etc/systemd/system/terraria.service
+    rm -f /etc/systemd/system/terraria-admin.service
+    systemctl daemon-reload
+
+    # Remove sudoers entry
+    rm -f /etc/sudoers.d/terraria
+
+    # Remove server user (and their home dir if it matches INSTALL_DIR)
+    if id "$SERVER_USER" &>/dev/null; then
+        echo "Removing user: $SERVER_USER"
+        userdel -r "$SERVER_USER" 2>/dev/null || userdel "$SERVER_USER" 2>/dev/null || true
+    fi
+
+    # Remove install directory
+    if [ -d "$INSTALL_DIR" ]; then
+        echo "Removing: $INSTALL_DIR"
+        rm -rf "$INSTALL_DIR"
+    fi
+
+    echo ""
+    echo "Clean complete. Starting fresh installation..."
+    echo ""
 fi
 
 # ============================================================
@@ -670,4 +718,8 @@ echo "Switch server type:"
 echo "  sudo ./install.sh --tshock      # Switch to TShock"
 echo "  sudo ./install.sh --vanilla     # Switch to Vanilla"
 echo "  sudo ./install.sh --tmodloader  # Switch to tModLoader"
+echo ""
+echo "Clean reinstall (wipes everything):"
+echo "  sudo ./install.sh --clean --tmodloader"
+echo "  sudo ./install.sh --clean --tshock"
 echo ""
