@@ -176,7 +176,26 @@ if [ "$SERVER_TYPE" = "tshock" ]; then
     echo "Installed .NET runtimes:"
     dotnet --list-runtimes 2>/dev/null || echo "  (none found)"
 elif [ "$SERVER_TYPE" = "tmodloader" ]; then
-    echo "tModLoader ships with a bundled .NET runtime — no separate installation needed"
+    wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
+    chmod +x /tmp/dotnet-install.sh
+
+    if ! dotnet --list-runtimes 2>/dev/null | grep -q "Microsoft.NETCore.App 8.0"; then
+        echo "Installing .NET 8.0 Runtime (required for tModLoader)..."
+        /tmp/dotnet-install.sh --channel 8.0 --runtime dotnet --install-dir /usr/share/dotnet
+    else
+        echo ".NET 8.0 already installed"
+    fi
+
+    ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet 2>/dev/null || true
+
+    if [ ! -f /etc/profile.d/dotnet.sh ]; then
+        echo "export DOTNET_ROOT=/usr/share/dotnet" > /etc/profile.d/dotnet.sh
+    fi
+    export DOTNET_ROOT=/usr/share/dotnet
+    rm -f /tmp/dotnet-install.sh
+
+    echo "Installed .NET runtimes:"
+    dotnet --list-runtimes 2>/dev/null || echo "  (none found)"
 else
     echo "Skipped (not needed for vanilla)"
 fi
@@ -287,70 +306,65 @@ if [ "$NEED_DOWNLOAD" = true ]; then
         echo "$VERSION" > "$INSTALL_DIR/.server_version"
 
     elif [ "$SERVER_TYPE" = "tmodloader" ]; then
-        echo "Downloading tModLoader dedicated server..."
+        echo "Downloading tModLoader..."
         RELEASE_INFO=$(curl -s https://api.github.com/repos/tModLoader/tModLoader/releases/latest)
         VERSION=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
 
-        # Try to find linux server asset (various naming conventions across releases)
+        # tModLoader releases tModLoader.zip containing tModLoader.dll (runs via dotnet)
         DOWNLOAD_URL=$(echo "$RELEASE_INFO" | jq -r '
-            .assets[]
-            | select(
-                (.name | test("linux.*[Ss]erver|[Ss]erver.*linux"; "i"))
-                or (.name == "tModLoader.zip")
-            )
-            | .browser_download_url
-        ' | head -1)
+            .assets[] | select(.name == "tModLoader.zip") | .browser_download_url
+        ')
 
-        # Fallback: main release zip
         if [ -z "$DOWNLOAD_URL" ]; then
-            DOWNLOAD_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("\\.zip$")) | .browser_download_url' | head -1)
+            # Fallback: first zip asset that is not the example mod
+            DOWNLOAD_URL=$(echo "$RELEASE_INFO" | jq -r '
+                .assets[] | select(.name | test("\\.zip$")) | select(.name != "ExampleMod.zip") | .browser_download_url
+            ' | head -1)
         fi
 
-        echo "Downloading: $DOWNLOAD_URL (version $VERSION)"
+        echo "Version: $VERSION"
+        echo "Downloading: $DOWNLOAD_URL"
         wget -q --show-progress -O server-download.zip "$DOWNLOAD_URL"
 
-        mkdir -p server-extract
-        unzip -o server-download.zip -d server-extract
-
-        # Find and copy Linux server files
         TML_DIR="$INSTALL_DIR/tModLoader"
         rm -rf "$TML_DIR"
         mkdir -p "$TML_DIR"
 
-        # Look for Linux binary structure
-        LINUX_DIR=$(find server-extract -type d -name "Linux" | head -1)
-        if [ -n "$LINUX_DIR" ]; then
-            cp -r "$LINUX_DIR"/* "$TML_DIR/"
-        else
-            # Copy everything — tModLoader zip often has all platforms together
-            cp -r server-extract/* "$TML_DIR/" 2>/dev/null || true
+        unzip -o server-download.zip -d "$TML_DIR"
+
+        echo "Extracted files:"
+        ls -la "$TML_DIR/"
+
+        # tModLoader.dll is the server entry point, launched via dotnet
+        TML_DLL=$(find "$TML_DIR" -name "tModLoader.dll" -type f 2>/dev/null | head -1)
+        if [ -z "$TML_DLL" ]; then
+            echo "ERROR: tModLoader.dll not found after extraction!"
+            ls -la "$TML_DIR/"
+            exit 1
         fi
 
-        # Find the server launch script or binary
-        SERVER_BIN=$(find "$TML_DIR" -name "start-tModLoaderServer.sh" -type f 2>/dev/null | head -1)
-        if [ -n "$SERVER_BIN" ]; then
-            chmod +x "$SERVER_BIN"
-            # Make all scripts executable
-            find "$TML_DIR" -name "*.sh" -exec chmod +x {} \;
-        else
-            # Fallback: look for TerrariaServer binary or dll
-            SERVER_BIN=$(find "$TML_DIR" -name "TerrariaServer" -type f ! -name "*.dll" 2>/dev/null | head -1)
-            [ -n "$SERVER_BIN" ] && chmod +x "$SERVER_BIN"
-        fi
+        TML_DLL_DIR=$(dirname "$TML_DLL")
+        echo "Found tModLoader.dll in: $TML_DLL_DIR"
 
-        # If we have a bundled dotnet, make it executable
-        find "$TML_DIR" -name "dotnet" -type f -exec chmod +x {} \; 2>/dev/null || true
+        # Create a launch wrapper script
+        SERVER_BIN="$TML_DLL_DIR/start-server.sh"
+        cat > "$SERVER_BIN" << WRAPPER
+#!/bin/bash
+cd "$(dirname "$0")"
+exec /usr/share/dotnet/dotnet tModLoader.dll -server "\$@"
+WRAPPER
+        chmod +x "$SERVER_BIN"
+        echo "Created launch wrapper: $SERVER_BIN"
 
         echo "$VERSION" > "$INSTALL_DIR/.server_version"
 
-        # Create mods directory if not already created
+        # Create mods directory
         MODS_DIR="$INSTALL_DIR/.local/share/Terraria/tModLoader/Mods"
         mkdir -p "$MODS_DIR"
 
-        # Create empty enabled.json if it doesn't exist
         if [ ! -f "$MODS_DIR/enabled.json" ]; then
             echo "{}" > "$MODS_DIR/enabled.json"
-            echo "Created: enabled.json (empty — install mods via web UI)"
+            echo "Created: enabled.json (install mods via web UI at /mods)"
         fi
 
     else
@@ -552,12 +566,10 @@ echo "[8/8] Checking systemd services..."
 SERVER_BIN=$(cat "$INSTALL_DIR/.server_bin")
 
 if [ "$SERVER_TYPE" = "tmodloader" ]; then
-    # tModLoader uses screen for interactive stdin (commands from web admin)
-    TML_DIR="$INSTALL_DIR/tModLoader"
-    START_SCRIPT=$(find "$TML_DIR" -name "start-tModLoaderServer.sh" -type f 2>/dev/null | head -1)
-    if [ -z "$START_SCRIPT" ]; then
-        START_SCRIPT="$SERVER_BIN"
-    fi
+    # tModLoader: launched via the wrapper script we created in STEP 5
+    # WorkingDirectory = directory containing tModLoader.dll
+    START_SCRIPT="$SERVER_BIN"
+    TML_WORKDIR=$(dirname "$START_SCRIPT")
 
     cat > /etc/systemd/system/terraria.service << EOF
 [Unit]
@@ -567,9 +579,10 @@ After=network.target
 [Service]
 Type=simple
 User=$SERVER_USER
-WorkingDirectory=$TML_DIR
+WorkingDirectory=$TML_WORKDIR
 Environment=HOME=$INSTALL_DIR
-ExecStart=/usr/bin/screen -DmS terraria /bin/bash $START_SCRIPT -config $INSTALL_DIR/serverconfig.txt -tml-skip-update
+Environment=DOTNET_ROOT=/usr/share/dotnet
+ExecStart=/usr/bin/screen -DmS terraria /bin/bash $START_SCRIPT -config $INSTALL_DIR/serverconfig.txt
 ExecStop=/bin/bash -c 'screen -S terraria -p 0 -X eval "stuff \\"exit\\r\\""; sleep 10; screen -S terraria -X quit 2>/dev/null; true'
 Restart=on-failure
 RestartSec=10
