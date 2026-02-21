@@ -809,16 +809,19 @@ def mods_workshop():
             flash(f'Download failed. steamcmd output: {output}', 'error')
             return redirect(url_for('mods'))
 
-        # Find .tmod file in the downloaded directory
-        tmod_file = next(
-            (os.path.join(workshop_dir, f)
-             for f in os.listdir(workshop_dir) if f.endswith('.tmod')),
-            None
-        )
+        # Recursively find all .tmod files (steamcmd puts them in version subfolders)
+        tmod_files = [
+            os.path.join(root, f)
+            for root, _, files in os.walk(workshop_dir)
+            for f in files if f.endswith('.tmod')
+        ]
 
-        if not tmod_file:
+        if not tmod_files:
             flash(f'Mod downloaded but no .tmod file found in {workshop_dir}', 'error')
             return redirect(url_for('mods'))
+
+        # Pick the most recently modified one (= latest version)
+        tmod_file = max(tmod_files, key=os.path.getmtime)
 
         # Copy to mods directory and enable
         os.makedirs(MODS_DIR, exist_ok=True)
