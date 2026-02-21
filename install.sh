@@ -110,17 +110,35 @@ if [ "$CLEAN_INSTALL" = true ]; then
     # Remove sudoers entry
     rm -f /etc/sudoers.d/terraria
 
-    # Remove server user (and their home dir if it matches INSTALL_DIR)
+    # Remove server user
     if id "$SERVER_USER" &>/dev/null; then
         echo "Removing user: $SERVER_USER"
-        userdel -r "$SERVER_USER" 2>/dev/null || userdel "$SERVER_USER" 2>/dev/null || true
+        userdel "$SERVER_USER" 2>/dev/null || true
     fi
 
-    # Remove install directory
-    if [ -d "$INSTALL_DIR" ]; then
-        echo "Removing: $INSTALL_DIR"
-        rm -rf "$INSTALL_DIR"
-    fi
+    # Remove server files, but preserve the git repo and scripts
+    # (INSTALL_DIR and SCRIPT_DIR may be the same path)
+    echo "Removing server files from: $INSTALL_DIR"
+    for target in \
+        "$INSTALL_DIR/tModLoader" \
+        "$INSTALL_DIR/tshock" \
+        "$INSTALL_DIR/ServerPlugins" \
+        "$INSTALL_DIR/worlds" \
+        "$INSTALL_DIR/backups" \
+        "$INSTALL_DIR/.local" \
+        "$INSTALL_DIR/admin/venv" \
+        "$INSTALL_DIR/serverconfig.txt" \
+        "$INSTALL_DIR/.server_bin" \
+        "$INSTALL_DIR/.server_type" \
+        "$INSTALL_DIR/.server_version" \
+        "$INSTALL_DIR/.rest_token" \
+        "$INSTALL_DIR/admin/.env" \
+    ; do
+        [ -e "$target" ] && rm -rf "$target" && echo "  Removed: $target"
+    done
+    # Remove any loose .dll / .so files left from previous server installs
+    find "$INSTALL_DIR" -maxdepth 1 -name "*.dll" -o -name "*.so" -o -name "*.bin.x86_64" \
+        2>/dev/null | xargs rm -f 2>/dev/null || true
 
     echo ""
     echo "Clean complete. Starting fresh installation..."
