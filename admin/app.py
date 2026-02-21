@@ -697,80 +697,120 @@ def _read_7bit_string(data, pos):
     return text, pos + length
 
 
-def _parse_tmod_build_txt(raw_bytes, is_compressed):
-    """Decode build.txt bytes (possibly deflate-compressed) and return modReferences."""
-    if is_compressed:
-        try:
-            raw_bytes = zlib.decompress(raw_bytes, wbits=-15)
-        except zlib.error:
-            return []
-    for line in raw_bytes.decode('utf-8', errors='replace').splitlines():
-        line = line.strip()
-        if line.startswith('modReferences') and '=' in line:
-            raw_deps = line.split('=', 1)[1].strip()
-            return [d.strip() for d in raw_deps.split(',') if d.strip()]
-    return []
+def _read_dotnet_string_list(data, pos):
+    """Read a .NET BinaryWriter list of strings terminated by an empty string.
 
-
-def _parse_tmod_inner(raw, pos):
-    """Parse the signed data section of a .tmod file and return modReferences.
-
-    Actual format (from TmodFile.cs in tModLoader source):
-
-      SIGNED DATA (not compressed at the outer level):
-        mod name        — 7-bit string
-        mod version     — 7-bit string
-        file count      — int32
-        FILE TABLE (all entries first):
-          name              — 7-bit string
-          uncompressed_len  — int32
-          compressed_len    — int32
-        FILE DATA (all bytes sequentially after the table):
-          file0 bytes (compressed_len0 bytes, deflate if uncompressed_len != compressed_len)
-          file1 bytes …
-
-    Individual files are deflate-compressed only if uncompressed_len != compressed_len.
+    Returns (list_of_strings, next_pos).
     """
-    _, pos = _read_7bit_string(raw, pos)   # mod name
+    items = []
+    while True:
+        s, pos = _read_7bit_string(data, pos)
+        if not s:
+            break
+        items.append(s)
+    return items, pos
+
+
+def _parse_info_binary(data):
+    """Parse tModLoader's binary Info file and return (mod_refs, weak_refs).
+
+    Format (from BuildProperties.cs ToBytes/ReadFromStream):
+      Sequence of tag strings (7-bit) followed by value(s), terminated by "".
+      Tags with list values  : "modReferences", "weakReferences", "sortAfter",
+                               "sortBefore", "dllReferences"  → ReadList()
+      Tags with string value : "author", "version", "displayName", "homepage",
+                               "description", "eacPath", "buildVersion", "modSource"
+      Tags with byte value   : "side"
+      Boolean flag tags      : "noCompile", "!playableOnPreview", "translationMod",
+                               "!hideCode", "!hideResources", "includeSource"
+                               (no value follows — tag alone signals true)
+
+    ModReference strings are "ModName" or "ModName@version".
+    """
+    STRING_VALUE_TAGS = frozenset({
+        'author', 'version', 'displayName', 'homepage',
+        'description', 'eacPath', 'buildVersion', 'modSource',
+    })
+    LIST_VALUE_TAGS = frozenset({
+        'modReferences', 'weakReferences',
+        'sortAfter', 'sortBefore', 'dllReferences',
+    })
+
+    pos = 0
+    mod_refs = []
+    weak_refs = []
+
+    while pos < len(data):
+        tag, pos = _read_7bit_string(data, pos)
+        if not tag:
+            break
+
+        if tag == 'modReferences':
+            refs, pos = _read_dotnet_string_list(data, pos)
+            mod_refs = [r.split('@')[0] for r in refs]
+        elif tag == 'weakReferences':
+            refs, pos = _read_dotnet_string_list(data, pos)
+            weak_refs = [r.split('@')[0] for r in refs]
+        elif tag in LIST_VALUE_TAGS:
+            _, pos = _read_dotnet_string_list(data, pos)
+        elif tag in STRING_VALUE_TAGS:
+            _, pos = _read_7bit_string(data, pos)
+        elif tag == 'side':
+            pos += 1  # single byte enum
+        # boolean flag tags have no payload — the tag itself is the value
+
+    return mod_refs, weak_refs
+
+
+def _read_tmod_file_entry(raw, pos, file_data_start):
+    """Given the (name, offset, u_len, c_len) table, extract and optionally
+    decompress the file bytes.  Returns raw bytes."""
+    name_pos, offset, uncompressed_len, compressed_len = pos
+    start = file_data_start + offset
+    file_bytes = raw[start:start + compressed_len]
+    if uncompressed_len != compressed_len:
+        file_bytes = zlib.decompress(file_bytes, wbits=-15)
+    return file_bytes
+
+
+def _parse_tmod_file_table(raw, pos):
+    """Parse mod name/version and file table from signed data section.
+
+    Returns (mod_name, entries, file_data_start) where entries is a list of
+    (name, offset_from_data_start, uncompressed_len, compressed_len).
+    """
+    mod_name, pos = _read_7bit_string(raw, pos)
     _, pos = _read_7bit_string(raw, pos)   # mod version
 
     file_count = int.from_bytes(raw[pos:pos + 4], 'little')
     pos += 4
 
-    # Read the entire file table first
     entries = []
     running_offset = 0
     for _ in range(file_count):
         name, pos = _read_7bit_string(raw, pos)
-        uncompressed_len = int.from_bytes(raw[pos:pos + 4], 'little')
-        pos += 4
-        compressed_len = int.from_bytes(raw[pos:pos + 4], 'little')
-        pos += 4
-        entries.append((name, running_offset, uncompressed_len, compressed_len))
-        running_offset += compressed_len
+        u_len = int.from_bytes(raw[pos:pos + 4], 'little'); pos += 4
+        c_len = int.from_bytes(raw[pos:pos + 4], 'little'); pos += 4
+        entries.append((name, running_offset, u_len, c_len))
+        running_offset += c_len
 
-    # pos now points to start of file data section
     file_data_start = pos
-
-    for name, offset, uncompressed_len, compressed_len in entries:
-        if name == 'build.txt':
-            start = file_data_start + offset
-            file_bytes = raw[start:start + compressed_len]
-            return _parse_tmod_build_txt(file_bytes, uncompressed_len != compressed_len)
-
-    return []
+    return mod_name, entries, file_data_start
 
 
 def _parse_tmod_dependencies(tmod_path):
-    """Return list of required mod names declared in build.txt of a .tmod file.
+    """Return list of hard-required mod names from the Info file inside a .tmod.
 
-    Format header:
-      "TMOD"         4 bytes
-      version        7-bit string
-      hash           20 bytes
-      signature      256 bytes
-      datalen        int32   (4 bytes)
-      [signed data]  datalen bytes — NOT compressed at the outer level
+    File format header (TmodFile.cs):
+      "TMOD"   4 bytes
+      version  7-bit string
+      hash     20 bytes
+      sig      256 bytes
+      datalen  int32  ← skipped, signed data follows immediately (not compressed)
+
+    Dependencies come from the binary Info file (BuildProperties.cs):
+      modReferences  = hard deps  (returned)
+      weakReferences = optional   (ignored — mod works without them)
     """
     try:
         with open(tmod_path, 'rb') as fh:
@@ -780,11 +820,32 @@ def _parse_tmod_dependencies(tmod_path):
             return []
 
         pos = 4
-        _, pos = _read_7bit_string(raw, pos)   # tML version
-        pos += 20 + 256                         # hash + signature
-        pos += 4                                # datalen (int32)
+        _, pos = _read_7bit_string(raw, pos)  # tML version
+        pos += 20 + 256 + 4                   # hash + sig + datalen
 
-        return _parse_tmod_inner(raw, pos)
+        _, entries, file_data_start = _parse_tmod_file_table(raw, pos)
+
+        for name, offset, u_len, c_len in entries:
+            if name == 'Info':
+                start = file_data_start + offset
+                file_bytes = raw[start:start + c_len]
+                if u_len != c_len:
+                    file_bytes = zlib.decompress(file_bytes, wbits=-15)
+                mod_refs, _ = _parse_info_binary(file_bytes)
+                return mod_refs
+
+        # Fallback: old mods may still ship build.txt
+        for name, offset, u_len, c_len in entries:
+            if name == 'build.txt':
+                start = file_data_start + offset
+                file_bytes = raw[start:start + c_len]
+                if u_len != c_len:
+                    file_bytes = zlib.decompress(file_bytes, wbits=-15)
+                for line in file_bytes.decode('utf-8', errors='replace').splitlines():
+                    line = line.strip()
+                    if line.startswith('modReferences') and '=' in line:
+                        return [d.strip() for d in line.split('=', 1)[1].split(',') if d.strip()]
+                return []
 
     except Exception:
         pass
@@ -808,24 +869,35 @@ def _debug_tmod(tmod_path):
         pos = 4
         tml_ver, pos = _read_7bit_string(raw, pos)
         result['tml_version'] = tml_ver
-        pos += 20 + 256  # hash + sig
-
-        data_len = int.from_bytes(raw[pos:pos + 4], 'little')
-        result['datalen'] = data_len
+        pos += 20 + 256
+        result['datalen'] = int.from_bytes(raw[pos:pos + 4], 'little')
         pos += 4
-
         result['signed_data_start'] = pos
-        result['expected_file_size'] = pos + data_len
-        result['actual_file_size'] = len(raw)
-        result['size_match'] = (pos + data_len == len(raw))
 
-        try:
-            deps = _parse_tmod_inner(raw, pos)
-            result['parse_ok'] = True
-            result['dependencies'] = deps
-        except Exception as exc:
-            result['parse_ok'] = False
-            result['parse_error'] = str(exc)
+        mod_name, entries, file_data_start = _parse_tmod_file_table(raw, pos)
+        result['mod_name'] = mod_name
+        result['file_count'] = len(entries)
+        result['files'] = [
+            {'name': n, 'uncompressed': u, 'compressed': c}
+            for n, _, u, c in entries
+        ]
+
+        # Parse Info or build.txt
+        for name, offset, u_len, c_len in entries:
+            if name == 'Info':
+                start = file_data_start + offset
+                file_bytes = raw[start:start + c_len]
+                if u_len != c_len:
+                    file_bytes = zlib.decompress(file_bytes, wbits=-15)
+                mod_refs, weak_refs = _parse_info_binary(file_bytes)
+                result['mod_references'] = mod_refs
+                result['weak_references'] = weak_refs
+                result['dependencies'] = mod_refs
+                result['parse_ok'] = True
+                return result
+
+        result['parse_ok'] = False
+        result['parse_error'] = 'Info file not found in .tmod'
 
     except Exception as exc:
         result['exception'] = str(exc)
