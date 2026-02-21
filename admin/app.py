@@ -697,28 +697,71 @@ def _read_7bit_string(data, pos):
     return text, pos + length
 
 
-def _parse_tmod_dependencies(tmod_path):
-    """Parse a .tmod binary file and return the list of required mod names.
+def _decompress_tmod_payload(raw, header_end):
+    """Try several strategies to decompress the tModLoader payload.
 
-    The .tmod format (tModLoader):
-      4 bytes  magic  "TMOD"
-      7-bit string    tML version
-      20 bytes        SHA1 hash
-      256 bytes       signature
-      remaining       raw Deflate payload (zlib wbits=-15)
+    tModLoader 2022+ stores a 4-byte (uint32 LE) compressed-data-length field
+    immediately after the 276-byte header (20 hash + 256 sig).  Older builds
+    go straight to raw deflate.  We try the most-likely offset first so we
+    don't silently fall back to garbage data.
 
-    Payload:
-      7-bit string    mod name
-      7-bit string    mod version
-      int32 LE        file count
-      per file:
-        7-bit string  file name
-        int32 LE      file length
-        N bytes       file data
-
-    build.txt inside the payload contains:
-      modReferences = ModA, ModB
+    Returns decompressed bytes or None.
     """
+    # candidate start offsets: +4 (length-prefixed, current format), +0 (legacy)
+    for skip in (4, 0):
+        start = header_end + skip
+        # raw deflate (wbits=-15) — used by tModLoader
+        try:
+            return zlib.decompress(raw[start:], wbits=-15)
+        except zlib.error:
+            pass
+        # gzip wrapper — fallback for unusual builds
+        try:
+            import gzip
+            return gzip.decompress(raw[start:])
+        except Exception:
+            pass
+    return None
+
+
+def _parse_tmod_payload(payload):
+    """Walk the decompressed tModLoader payload and return modReferences list.
+
+    Payload layout (tModLoader ≤ 2025):
+      7-bit string  mod name
+      7-bit string  mod version
+      int32 LE      file count
+      per file:
+        7-bit string  file path/name
+        int32 LE      file size
+        N bytes       file data
+    """
+    pos = 0
+    _, pos = _read_7bit_string(payload, pos)   # mod name
+    _, pos = _read_7bit_string(payload, pos)   # mod version
+    file_count = int.from_bytes(payload[pos:pos + 4], 'little')
+    pos += 4
+
+    for _ in range(file_count):
+        name, pos = _read_7bit_string(payload, pos)
+        length = int.from_bytes(payload[pos:pos + 4], 'little')
+        pos += 4
+        file_data = payload[pos:pos + length]
+        pos += length
+
+        if name == 'build.txt':
+            for line in file_data.decode('utf-8', errors='replace').splitlines():
+                line = line.strip()
+                if line.startswith('modReferences') and '=' in line:
+                    raw_deps = line.split('=', 1)[1].strip()
+                    return [d.strip() for d in raw_deps.split(',') if d.strip()]
+            return []  # build.txt present but no modReferences
+
+    return []
+
+
+def _parse_tmod_dependencies(tmod_path):
+    """Return list of required mod names declared in build.txt of a .tmod file."""
     try:
         with open(tmod_path, 'rb') as fh:
             raw = fh.read()
@@ -728,37 +771,56 @@ def _parse_tmod_dependencies(tmod_path):
 
         pos = 4
         _, pos = _read_7bit_string(raw, pos)   # skip tML version string
-        pos += 20 + 256                         # skip hash + signature
+        pos += 20 + 256                         # skip SHA1 hash + signature
 
-        try:
-            payload = zlib.decompress(raw[pos:], wbits=-15)
-        except zlib.error:
+        payload = _decompress_tmod_payload(raw, pos)
+        if payload is None:
             return []
 
-        pos = 0
-        _, pos = _read_7bit_string(payload, pos)    # mod name
-        _, pos = _read_7bit_string(payload, pos)    # mod version
-        file_count = int.from_bytes(payload[pos:pos + 4], 'little')
-        pos += 4
-
-        for _ in range(file_count):
-            name, pos = _read_7bit_string(payload, pos)
-            length = int.from_bytes(payload[pos:pos + 4], 'little')
-            pos += 4
-            file_data = payload[pos:pos + length]
-            pos += length
-
-            if name == 'build.txt':
-                for line in file_data.decode('utf-8', errors='replace').splitlines():
-                    line = line.strip()
-                    if line.startswith('modReferences') and '=' in line:
-                        raw_deps = line.split('=', 1)[1].strip()
-                        return [d.strip() for d in raw_deps.split(',') if d.strip()]
-                return []  # build.txt found but no modReferences line
+        return _parse_tmod_payload(payload)
 
     except Exception:
         pass
     return []
+
+
+def _debug_tmod(tmod_path):
+    """Return a dict with diagnostic info about a .tmod file (for /api/mods/debug)."""
+    result = {'path': tmod_path, 'exists': os.path.exists(tmod_path)}
+    if not result['exists']:
+        return result
+    try:
+        with open(tmod_path, 'rb') as fh:
+            raw = fh.read()
+
+        result['size'] = len(raw)
+        result['magic_ok'] = raw[:4] == b'TMOD'
+        if not result['magic_ok']:
+            return result
+
+        pos = 4
+        tml_ver, pos = _read_7bit_string(raw, pos)
+        result['tml_version'] = tml_ver
+        pos += 20 + 256  # skip hash + sig
+        result['header_end'] = pos
+
+        # Try both offsets and record which worked
+        for skip in (4, 0):
+            start = pos + skip
+            label = f'+{skip}'
+            try:
+                payload = zlib.decompress(raw[start:], wbits=-15)
+                result['decompress_ok'] = True
+                result['decompress_offset'] = label
+                result['payload_size'] = len(payload)
+                result['dependencies'] = _parse_tmod_payload(payload)
+                return result
+            except zlib.error as e:
+                result[f'deflate{label}_error'] = str(e)
+        result['decompress_ok'] = False
+    except Exception as exc:
+        result['exception'] = str(exc)
+    return result
 
 
 # ------------------------------------------------------------------
@@ -1150,6 +1212,18 @@ def api_version():
 @login_required
 def api_mods():
     return jsonify(_list_mods())
+
+
+@app.route('/api/mods/debug')
+@login_required
+def api_mods_debug():
+    """Diagnostic endpoint: parse every .tmod and report dependencies + format info."""
+    results = []
+    if os.path.isdir(MODS_DIR):
+        for fname in sorted(os.listdir(MODS_DIR)):
+            if fname.endswith('.tmod'):
+                results.append(_debug_tmod(os.path.join(MODS_DIR, fname)))
+    return jsonify(results)
 
 
 # ============================================================
