@@ -11,6 +11,7 @@ import functools
 import time
 import shutil
 import tempfile
+import zlib
 from pathlib import Path
 from datetime import datetime
 
@@ -41,6 +42,38 @@ SCREEN_SESSION  = os.environ.get('SCREEN_SESSION', 'terraria')
 MODS_DIR        = os.environ.get('MODS_DIR', '/opt/terraria/.local/share/Terraria/tModLoader/Mods')
 STEAMCMD_BIN    = os.environ.get('STEAMCMD_BIN', '/opt/steamcmd/steamcmd.sh')
 TERRARIA_APP_ID = '1281930'
+
+# Known Workshop IDs for popular mods — used for auto-installing dependencies.
+# Keys are tModLoader internal mod names (as they appear in modReferences / .tmod filenames).
+KNOWN_WORKSHOP_IDS = {
+    'CalamityMod':          '2824688072',
+    'CalamityModMusic':     '2824688266',
+    'ThoriumMod':           '2756794847',
+    'BossChecklist':        '2756794864',
+    'RecipeBrowser':        '2756794983',
+    'MagicStorage':         '2563309347',
+    'Census':               '2687356363',
+    'AlchemistNPCLite':     '2382561813',
+    'ImprovedTorches':      '2790887285',
+    'HERO_Mod':             '2564599814',
+    'WingSlot':             '2563309386',
+    'CheatSheet':           '2563309402',
+    'AutoTrash':            '2563372007',
+    'Fargo_Mutant_Mod':     '2563309826',
+    'FargowiltasSouls':     '2564815791',
+    'StarlightRiver':       '2609329524',
+    'Infernum':             '3142790752',
+    'Terraria_Overhaul':    '1417245098',
+    'MusicBox':             '2563309347',
+    'HEROsMod':             '2564599814',
+    'FancyLighting':        '2907538845',
+    'SpiritMod':            '2563309339',
+    'Redemption':           '2610690817',
+    'GRealm':               '2563309387',
+    'AssortedCrazyThings':  '2563309359',
+    'Wikithis':             '2563309402',
+    'AmuletOfManyMinions':  '2398614480',
+}
 CONFIG_FILE    = os.path.join(TERRARIA_DIR, 'serverconfig.txt')
 TSHOCK_CONFIG  = os.path.join(TERRARIA_DIR, 'tshock', 'config.json')
 SERVICE_NAME   = 'terraria'
@@ -642,6 +675,190 @@ def save_config():
 # Routes — Mods (tModLoader only)
 # ============================================================
 
+# ------------------------------------------------------------------
+# .tmod binary parser helpers
+# ------------------------------------------------------------------
+
+def _read_7bit_string(data, pos):
+    """Read a .NET BinaryWriter 7-bit-encoded string from *data* at *pos*.
+
+    Returns (decoded_string, next_pos).
+    """
+    length = 0
+    shift = 0
+    while True:
+        b = data[pos]
+        pos += 1
+        length |= (b & 0x7F) << shift
+        if not (b & 0x80):
+            break
+        shift += 7
+    text = data[pos:pos + length].decode('utf-8', errors='replace')
+    return text, pos + length
+
+
+def _parse_tmod_dependencies(tmod_path):
+    """Parse a .tmod binary file and return the list of required mod names.
+
+    The .tmod format (tModLoader):
+      4 bytes  magic  "TMOD"
+      7-bit string    tML version
+      20 bytes        SHA1 hash
+      256 bytes       signature
+      remaining       raw Deflate payload (zlib wbits=-15)
+
+    Payload:
+      7-bit string    mod name
+      7-bit string    mod version
+      int32 LE        file count
+      per file:
+        7-bit string  file name
+        int32 LE      file length
+        N bytes       file data
+
+    build.txt inside the payload contains:
+      modReferences = ModA, ModB
+    """
+    try:
+        with open(tmod_path, 'rb') as fh:
+            raw = fh.read()
+
+        if raw[:4] != b'TMOD':
+            return []
+
+        pos = 4
+        _, pos = _read_7bit_string(raw, pos)   # skip tML version string
+        pos += 20 + 256                         # skip hash + signature
+
+        try:
+            payload = zlib.decompress(raw[pos:], wbits=-15)
+        except zlib.error:
+            return []
+
+        pos = 0
+        _, pos = _read_7bit_string(payload, pos)    # mod name
+        _, pos = _read_7bit_string(payload, pos)    # mod version
+        file_count = int.from_bytes(payload[pos:pos + 4], 'little')
+        pos += 4
+
+        for _ in range(file_count):
+            name, pos = _read_7bit_string(payload, pos)
+            length = int.from_bytes(payload[pos:pos + 4], 'little')
+            pos += 4
+            file_data = payload[pos:pos + length]
+            pos += length
+
+            if name == 'build.txt':
+                for line in file_data.decode('utf-8', errors='replace').splitlines():
+                    line = line.strip()
+                    if line.startswith('modReferences') and '=' in line:
+                        raw_deps = line.split('=', 1)[1].strip()
+                        return [d.strip() for d in raw_deps.split(',') if d.strip()]
+                return []  # build.txt found but no modReferences line
+
+    except Exception:
+        pass
+    return []
+
+
+# ------------------------------------------------------------------
+# steamcmd download helper
+# ------------------------------------------------------------------
+
+def _download_mod_from_workshop(steamcmd, workshop_id):
+    """Download a Workshop item and copy the .tmod into MODS_DIR.
+
+    Returns (mod_name, None) on success or (None, error_message) on failure.
+    Does NOT modify enabled.json.
+    """
+    try:
+        result = subprocess.run(
+            [steamcmd,
+             '+login', 'anonymous',
+             '+workshop_download_item', TERRARIA_APP_ID, workshop_id,
+             '+quit'],
+            capture_output=True, text=True, timeout=300,
+            env={**os.environ, 'HOME': TERRARIA_DIR}
+        )
+
+        workshop_dir = os.path.join(
+            TERRARIA_DIR, 'Steam', 'steamapps', 'workshop',
+            'content', TERRARIA_APP_ID, workshop_id
+        )
+
+        if not os.path.isdir(workshop_dir):
+            tail = (result.stdout + result.stderr)[-600:]
+            return None, f'Workshop item {workshop_id} download failed. steamcmd: {tail}'
+
+        tmod_files = [
+            os.path.join(root, f)
+            for root, _, files in os.walk(workshop_dir)
+            for f in files if f.endswith('.tmod')
+        ]
+
+        if not tmod_files:
+            return None, f'No .tmod file found in Workshop item {workshop_id}'
+
+        tmod_file = max(tmod_files, key=os.path.getmtime)
+        os.makedirs(MODS_DIR, exist_ok=True)
+        dest = os.path.join(MODS_DIR, os.path.basename(tmod_file))
+        shutil.copy2(tmod_file, dest)
+        mod_name = os.path.basename(tmod_file)[:-5]
+        return mod_name, None
+
+    except subprocess.TimeoutExpired:
+        return None, f'Download of Workshop item {workshop_id} timed out (5 min)'
+    except Exception as exc:
+        return None, f'Error downloading Workshop item {workshop_id}: {exc}'
+
+
+# ------------------------------------------------------------------
+# Dependency auto-installer
+# ------------------------------------------------------------------
+
+def _ensure_mod_dependencies(tmod_path, steamcmd):
+    """Parse *tmod_path* for modReferences and auto-install any that are missing.
+
+    Returns a list of (ok: bool, message: str) tuples to be flashed to the user.
+    """
+    messages = []
+    deps = _parse_tmod_dependencies(tmod_path)
+    if not deps:
+        return messages
+
+    for dep in deps:
+        dep_file = os.path.join(MODS_DIR, f'{dep}.tmod')
+
+        if os.path.exists(dep_file):
+            # Already present — just make sure it's enabled
+            enabled = _get_enabled_mods()
+            if not enabled.get(dep, False):
+                enabled[dep] = True
+                _save_enabled_mods(enabled)
+                messages.append((True, f'Dependency "{dep}" already installed — enabled it.'))
+            continue
+
+        workshop_id = KNOWN_WORKSHOP_IDS.get(dep)
+        if not workshop_id:
+            messages.append((
+                False,
+                f'Dependency "{dep}" is required but its Workshop ID is unknown. '
+                f'Install it manually and re-enable the mod.'
+            ))
+            continue
+
+        mod_name, err = _download_mod_from_workshop(steamcmd, workshop_id)
+        if err:
+            messages.append((False, f'Failed to auto-install dependency "{dep}": {err}'))
+        else:
+            enabled = _get_enabled_mods()
+            enabled[mod_name] = True
+            _save_enabled_mods(enabled)
+            messages.append((True, f'Auto-installed dependency "{dep}" (Workshop {workshop_id}).'))
+
+    return messages
+
+
 def _get_enabled_mods():
     """Return dict {ModName: bool} regardless of enabled.json format.
 
@@ -749,8 +966,23 @@ def mods_upload():
     enabled = _get_enabled_mods()
     enabled[mod_name] = True
     _save_enabled_mods(enabled)
+    flash(f'Mod "{mod_name}" uploaded and enabled.', 'success')
 
-    flash(f'Mod "{mod_name}" uploaded and enabled. Restart the server to apply.', 'success')
+    # Auto-install any missing dependencies if steamcmd is available
+    steamcmd = STEAMCMD_BIN if os.path.exists(STEAMCMD_BIN) else shutil.which('steamcmd')
+    if steamcmd:
+        for ok, msg in _ensure_mod_dependencies(dest, steamcmd):
+            flash(msg, 'success' if ok else 'error')
+    else:
+        deps = _parse_tmod_dependencies(dest)
+        if deps:
+            flash(
+                f'This mod requires: {", ".join(deps)}. '
+                f'Install steamcmd (re-run install.sh --tmodloader) to auto-install dependencies.',
+                'error'
+            )
+
+    flash('Restart the server to apply changes.', 'success')
     return redirect(url_for('mods'))
 
 
@@ -796,60 +1028,22 @@ def mods_workshop():
         flash('steamcmd not found. Re-run install.sh --tmodloader to install it.', 'error')
         return redirect(url_for('mods'))
 
-    try:
-        flash(f'Downloading Workshop item {workshop_id}… this may take a minute.', 'success')
+    mod_name, err = _download_mod_from_workshop(steamcmd, workshop_id)
+    if err:
+        flash(err, 'error')
+        return redirect(url_for('mods'))
 
-        result = subprocess.run(
-            [steamcmd,
-             '+login', 'anonymous',
-             '+workshop_download_item', TERRARIA_APP_ID, workshop_id,
-             '+quit'],
-            capture_output=True, text=True, timeout=300,
-            env={**os.environ, 'HOME': TERRARIA_DIR}
-        )
+    enabled = _get_enabled_mods()
+    enabled[mod_name] = True
+    _save_enabled_mods(enabled)
+    flash(f'Mod "{mod_name}" installed and enabled!', 'success')
 
-        # steamcmd stores downloads under HOME/Steam/steamapps/workshop/content/<appid>/<workshopid>/
-        workshop_dir = os.path.join(
-            TERRARIA_DIR, 'Steam', 'steamapps', 'workshop',
-            'content', TERRARIA_APP_ID, workshop_id
-        )
+    # Auto-install any missing dependencies declared in the .tmod
+    dest = os.path.join(MODS_DIR, f'{mod_name}.tmod')
+    for ok, msg in _ensure_mod_dependencies(dest, steamcmd):
+        flash(msg, 'success' if ok else 'error')
 
-        if not os.path.isdir(workshop_dir):
-            output = (result.stdout + result.stderr)[-1000:]
-            flash(f'Download failed. steamcmd output: {output}', 'error')
-            return redirect(url_for('mods'))
-
-        # Recursively find all .tmod files (steamcmd puts them in version subfolders)
-        tmod_files = [
-            os.path.join(root, f)
-            for root, _, files in os.walk(workshop_dir)
-            for f in files if f.endswith('.tmod')
-        ]
-
-        if not tmod_files:
-            flash(f'Mod downloaded but no .tmod file found in {workshop_dir}', 'error')
-            return redirect(url_for('mods'))
-
-        # Pick the most recently modified one (= latest version)
-        tmod_file = max(tmod_files, key=os.path.getmtime)
-
-        # Copy to mods directory and enable
-        os.makedirs(MODS_DIR, exist_ok=True)
-        mod_name = os.path.basename(tmod_file)[:-5]
-        dest = os.path.join(MODS_DIR, os.path.basename(tmod_file))
-        shutil.copy2(tmod_file, dest)
-
-        enabled = _get_enabled_mods()
-        enabled[mod_name] = True
-        _save_enabled_mods(enabled)
-
-        flash(f'Mod "{mod_name}" installed and enabled! Restart server to apply.', 'success')
-
-    except subprocess.TimeoutExpired:
-        flash('Download timed out (5 min). Check server internet connection.', 'error')
-    except Exception as e:
-        flash(f'Error: {e}', 'error')
-
+    flash('Restart the server to apply changes.', 'success')
     return redirect(url_for('mods'))
 
 
