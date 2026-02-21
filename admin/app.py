@@ -643,23 +643,33 @@ def save_config():
 # ============================================================
 
 def _get_enabled_mods():
-    """Return dict {ModName: bool} from enabled.json."""
+    """Return dict {ModName: bool} regardless of enabled.json format.
+
+    tModLoader stores enabled.json as a list of enabled mod names.
+    We normalise to a dict so the rest of the code is uniform.
+    """
     enabled_file = os.path.join(MODS_DIR, 'enabled.json')
     if os.path.exists(enabled_file):
         try:
             with open(enabled_file) as f:
-                return json.load(f)
+                data = json.load(f)
+            if isinstance(data, list):
+                return {name: True for name in data}
+            if isinstance(data, dict):
+                return data
         except Exception:
             pass
     return {}
 
 
 def _save_enabled_mods(enabled):
-    """Write enabled.json."""
+    """Write enabled.json in tModLoader's native list format."""
     os.makedirs(MODS_DIR, exist_ok=True)
     enabled_file = os.path.join(MODS_DIR, 'enabled.json')
+    # tModLoader expects a list of enabled mod names
+    enabled_list = [name for name, active in enabled.items() if active]
     with open(enabled_file, 'w') as f:
-        json.dump(enabled, f, indent=2)
+        json.dump(enabled_list, f, indent=2)
 
 
 def _list_mods():
