@@ -39,7 +39,6 @@ ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin')
 SERVER_TYPE    = os.environ.get('SERVER_TYPE', 'tshock')
 SCREEN_SESSION = os.environ.get('SCREEN_SESSION', 'terraria')
 MODS_DIR       = os.environ.get('MODS_DIR', '/opt/terraria/.local/share/Terraria/tModLoader/Mods')
-TMOD_PORTAL    = os.environ.get('TMOD_PORTAL', 'https://api.tmod.io')
 CONFIG_FILE    = os.path.join(TERRARIA_DIR, 'serverconfig.txt')
 TSHOCK_CONFIG  = os.path.join(TERRARIA_DIR, 'tshock', 'config.json')
 SERVICE_NAME   = 'terraria'
@@ -774,78 +773,7 @@ def mods_delete():
 @app.route('/mods/search')
 @login_required
 def mods_search():
-    query = request.args.get('q', '').strip()
-    results = None
-    error = None
-
-    if query:
-        try:
-            resp = requests.get(
-                f'{TMOD_PORTAL}/api/mod/search',
-                params={'query': query, 'take': 20, 'sort': 'downloads'},
-                timeout=10,
-                headers={'User-Agent': 'TerrariaAdminPanel/1.0'}
-            )
-            if resp.ok:
-                data = resp.json()
-                # Handle both {"data": [...]} and direct list responses
-                if isinstance(data, list):
-                    results = data
-                elif isinstance(data, dict):
-                    results = data.get('data', data.get('mods', []))
-            else:
-                error = f'Mod portal returned status {resp.status_code}'
-        except requests.exceptions.ConnectionError:
-            error = 'Cannot connect to mod portal. Check internet connection.'
-        except requests.exceptions.Timeout:
-            error = 'Mod portal request timed out.'
-        except Exception as e:
-            error = f'Search error: {e}'
-
-    return render_template(
-        'mods_search.html',
-        query=query,
-        results=results,
-        error=error,
-        portal=TMOD_PORTAL,
-    )
-
-
-@app.route('/mods/download', methods=['POST'])
-@login_required
-def mods_download():
-    mod_name = request.form.get('mod_name', '').strip()
-    download_url = request.form.get('download_url', '').strip()
-
-    if not mod_name or not download_url:
-        flash('Mod name and download URL are required', 'error')
-        return redirect(url_for('mods_search'))
-
-    try:
-        os.makedirs(MODS_DIR, exist_ok=True)
-        filename = secure_filename(mod_name + '.tmod')
-        dest = os.path.join(MODS_DIR, filename)
-
-        resp = requests.get(
-            download_url, timeout=120, stream=True,
-            headers={'User-Agent': 'TerrariaAdminPanel/1.0'}
-        )
-        resp.raise_for_status()
-
-        with open(dest, 'wb') as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                f.write(chunk)
-
-        # Auto-enable
-        enabled = _get_enabled_mods()
-        enabled[mod_name] = True
-        _save_enabled_mods(enabled)
-
-        flash(f'Mod "{mod_name}" downloaded and enabled. Restart the server to apply.', 'success')
-    except Exception as e:
-        flash(f'Download failed: {e}', 'error')
-
-    return redirect(url_for('mods'))
+    return render_template('mods_search.html')
 
 
 # ============================================================
