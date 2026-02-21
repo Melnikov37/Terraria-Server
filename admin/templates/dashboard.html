@@ -27,9 +27,13 @@
         <span style="font-size: 1.2rem; font-weight: 500;">
             {{ 'Online' if status.online else 'Offline' }}
         </span>
-        <span class="badge {{ 'badge-success' if status.server_type == 'tshock' else 'badge-warning' }}" style="margin-left: 15px;">
-            {{ status.server_type|upper }}
-        </span>
+        {% if status.server_type == 'tmodloader' %}
+            <span class="badge badge-success" style="margin-left: 15px;">tModLoader</span>
+        {% elif status.server_type == 'tshock' %}
+            <span class="badge badge-success" style="margin-left: 15px;">TShock</span>
+        {% else %}
+            <span class="badge badge-warning" style="margin-left: 15px;">Vanilla</span>
+        {% endif %}
         {% if status.version %}
             <span class="badge badge-success" style="margin-left: 10px;">{{ status.version }}</span>
         {% endif %}
@@ -56,7 +60,9 @@
     </div>
     {% else %}
     <p style="color: var(--text-muted);">
-        {% if status.service %}
+        {% if status.service and status.server_type == 'tmodloader' %}
+            Service is running but screen session not detected. Server might still be loading the world...
+        {% elif status.service %}
             Service is running but REST API is not responding. Server might be starting up...
         {% else %}
             Server is stopped. Click "Start Server" to begin.
@@ -106,6 +112,9 @@
             <button type="submit" class="btn btn-primary" {{ 'disabled' if not status.online }}>Save World</button>
         </form>
         <a href="{{ url_for('world') }}" class="btn btn-primary">World Controls</a>
+        {% if status.server_type == 'tmodloader' %}
+        <a href="{{ url_for('mods') }}" class="btn btn-primary">Manage Mods</a>
+        {% endif %}
         <a href="{{ url_for('config') }}" class="btn btn-primary">Configuration</a>
     </div>
 </div>

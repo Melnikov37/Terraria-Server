@@ -204,6 +204,7 @@
                 <li><a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a></li>
                 <li><a href="{{ url_for('players') }}" class="{{ 'active' if request.endpoint == 'players' }}">Players</a></li>
                 <li><a href="{{ url_for('world') }}" class="{{ 'active' if request.endpoint == 'world' }}">World</a></li>
+                <li><a href="{{ url_for('mods') }}" class="{{ 'active' if request.endpoint in ('mods', 'mods_search') }}">Mods</a></li>
                 <li><a href="{{ url_for('config') }}" class="{{ 'active' if request.endpoint == 'config' }}">Config</a></li>
                 <li><a href="{{ url_for('logout') }}">Logout</a></li>
             </ul>

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Terraria Server Installation Script
-# Supports both TShock and Vanilla servers
+# Supports: TShock, Vanilla, tModLoader
 # IDEMPOTENT: Safe to run multiple times
 
 set -e
@@ -24,6 +24,10 @@ while [[ $# -gt 0 ]]; do
             SERVER_TYPE="vanilla"
             shift
             ;;
+        --tmodloader|-m)
+            SERVER_TYPE="tmodloader"
+            shift
+            ;;
         --update|-u)
             FORCE_DOWNLOAD=true
             shift
@@ -43,13 +47,17 @@ if [ -z "$SERVER_TYPE" ]; then
     else
         echo ""
         echo "Choose server type:"
-        echo "  1) TShock  - Plugins, permissions, REST API, admin tools (Terraria 1.4.4.9)"
-        echo "  2) Vanilla - Official server, latest version (Terraria 1.4.5.x)"
+        echo "  1) TShock      - Plugins, permissions, REST API (Terraria 1.4.4.9)"
+        echo "  2) Vanilla     - Official server, latest version (Terraria 1.4.5.x)"
+        echo "  3) tModLoader  - Mod support: Calamity, Thorium, etc. (Terraria 1.4.4.x)"
         echo ""
-        read -p "Enter choice [1/2]: " choice
+        read -p "Enter choice [1/2/3]: " choice
         case $choice in
             2|v|vanilla)
                 SERVER_TYPE="vanilla"
+                ;;
+            3|m|tmodloader)
+                SERVER_TYPE="tmodloader"
                 ;;
             *)
                 SERVER_TYPE="tshock"
@@ -94,7 +102,7 @@ else
 fi
 
 # ============================================================
-# STEP 2: Install .NET Runtime (for TShock)
+# STEP 2: Install .NET Runtime
 # ============================================================
 echo "[2/8] Checking .NET Runtime..."
 
@@ -119,6 +127,8 @@ if [ "$SERVER_TYPE" = "tshock" ]; then
 
     echo "Installed .NET runtimes:"
     dotnet --list-runtimes 2>/dev/null || echo "  (none found)"
+elif [ "$SERVER_TYPE" = "tmodloader" ]; then
+    echo "tModLoader ships with a bundled .NET runtime — no separate installation needed"
 else
     echo "Skipped (not needed for vanilla)"
 fi
@@ -151,6 +161,13 @@ if [ "$SERVER_TYPE" = "tshock" ]; then
     mkdir -p "$INSTALL_DIR/tshock" "$INSTALL_DIR/ServerPlugins"
 fi
 
+if [ "$SERVER_TYPE" = "tmodloader" ]; then
+    MODS_DIR="$INSTALL_DIR/.local/share/Terraria/tModLoader/Mods"
+    mkdir -p "$MODS_DIR"
+    mkdir -p "$INSTALL_DIR/tModLoader"
+    echo "Created mods directory: $MODS_DIR"
+fi
+
 # ============================================================
 # STEP 5: Download server
 # ============================================================
@@ -169,7 +186,7 @@ elif [ "$CURRENT_TYPE" != "$SERVER_TYPE" ]; then
     echo "Server type changed: $CURRENT_TYPE -> $SERVER_TYPE"
 
     # Clean up old server type files when switching
-    if [ "$CURRENT_TYPE" = "tshock" ] && [ "$SERVER_TYPE" = "vanilla" ]; then
+    if [ "$CURRENT_TYPE" = "tshock" ] && [ "$SERVER_TYPE" != "tshock" ]; then
         echo "Cleaning up TShock files..."
         rm -rf "$INSTALL_DIR/tshock" 2>/dev/null || true
         rm -rf "$INSTALL_DIR/ServerPlugins" 2>/dev/null || true
@@ -178,10 +195,14 @@ elif [ "$CURRENT_TYPE" != "$SERVER_TYPE" ]; then
         rm -f "$INSTALL_DIR/TShock"*.dll 2>/dev/null || true
         rm -f "$INSTALL_DIR/OTAPI"*.dll 2>/dev/null || true
     fi
+    if [ "$CURRENT_TYPE" = "tmodloader" ] && [ "$SERVER_TYPE" != "tmodloader" ]; then
+        echo "Cleaning up tModLoader binaries (keeping mods and worlds)..."
+        rm -rf "$INSTALL_DIR/tModLoader" 2>/dev/null || true
+    fi
 fi
 
 if [ "$NEED_DOWNLOAD" = true ]; then
-    # Stop server if running (to avoid "Text file busy" error)
+    # Stop server if running
     if systemctl is-active --quiet terraria 2>/dev/null; then
         echo "Stopping server for update..."
         systemctl stop terraria
@@ -198,11 +219,9 @@ if [ "$NEED_DOWNLOAD" = true ]; then
         VERSION=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
 
         wget -q --show-progress -O server-download.zip "$DOWNLOAD_URL"
-
         mkdir -p server-extract
         unzip -o server-download.zip -d server-extract
 
-        # Handle .tar inside .zip
         TAR_FILE=$(find server-extract -name "*.tar" -type f 2>/dev/null | head -1)
         if [ -n "$TAR_FILE" ]; then
             tar -xf "$TAR_FILE" -C "$INSTALL_DIR/"
@@ -215,15 +234,79 @@ if [ "$NEED_DOWNLOAD" = true ]; then
             fi
         fi
 
-        # Find binary
         SERVER_BIN=$(find "$INSTALL_DIR" -name "TShock.Server" -type f 2>/dev/null | head -1)
         [ -z "$SERVER_BIN" ] && SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer.bin.x86_64" -type f 2>/dev/null | head -1)
+        echo "$VERSION" > "$INSTALL_DIR/.server_version"
+
+    elif [ "$SERVER_TYPE" = "tmodloader" ]; then
+        echo "Downloading tModLoader dedicated server..."
+        RELEASE_INFO=$(curl -s https://api.github.com/repos/tModLoader/tModLoader/releases/latest)
+        VERSION=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
+
+        # Try to find linux server asset (various naming conventions across releases)
+        DOWNLOAD_URL=$(echo "$RELEASE_INFO" | jq -r '
+            .assets[]
+            | select(
+                (.name | test("linux.*[Ss]erver|[Ss]erver.*linux"; "i"))
+                or (.name == "tModLoader.zip")
+            )
+            | .browser_download_url
+        ' | head -1)
+
+        # Fallback: main release zip
+        if [ -z "$DOWNLOAD_URL" ]; then
+            DOWNLOAD_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("\\.zip$")) | .browser_download_url' | head -1)
+        fi
+
+        echo "Downloading: $DOWNLOAD_URL (version $VERSION)"
+        wget -q --show-progress -O server-download.zip "$DOWNLOAD_URL"
+
+        mkdir -p server-extract
+        unzip -o server-download.zip -d server-extract
+
+        # Find and copy Linux server files
+        TML_DIR="$INSTALL_DIR/tModLoader"
+        rm -rf "$TML_DIR"
+        mkdir -p "$TML_DIR"
+
+        # Look for Linux binary structure
+        LINUX_DIR=$(find server-extract -type d -name "Linux" | head -1)
+        if [ -n "$LINUX_DIR" ]; then
+            cp -r "$LINUX_DIR"/* "$TML_DIR/"
+        else
+            # Copy everything — tModLoader zip often has all platforms together
+            cp -r server-extract/* "$TML_DIR/" 2>/dev/null || true
+        fi
+
+        # Find the server launch script or binary
+        SERVER_BIN=$(find "$TML_DIR" -name "start-tModLoaderServer.sh" -type f 2>/dev/null | head -1)
+        if [ -n "$SERVER_BIN" ]; then
+            chmod +x "$SERVER_BIN"
+            # Make all scripts executable
+            find "$TML_DIR" -name "*.sh" -exec chmod +x {} \;
+        else
+            # Fallback: look for TerrariaServer binary or dll
+            SERVER_BIN=$(find "$TML_DIR" -name "TerrariaServer" -type f ! -name "*.dll" 2>/dev/null | head -1)
+            [ -n "$SERVER_BIN" ] && chmod +x "$SERVER_BIN"
+        fi
+
+        # If we have a bundled dotnet, make it executable
+        find "$TML_DIR" -name "dotnet" -type f -exec chmod +x {} \; 2>/dev/null || true
 
         echo "$VERSION" > "$INSTALL_DIR/.server_version"
 
+        # Create mods directory if not already created
+        MODS_DIR="$INSTALL_DIR/.local/share/Terraria/tModLoader/Mods"
+        mkdir -p "$MODS_DIR"
+
+        # Create empty enabled.json if it doesn't exist
+        if [ ! -f "$MODS_DIR/enabled.json" ]; then
+            echo "{}" > "$MODS_DIR/enabled.json"
+            echo "Created: enabled.json (empty — install mods via web UI)"
+        fi
+
     else
         echo "Downloading Vanilla server..."
-        # Get latest vanilla version
         DOWNLOAD_PAGE=$(curl -s "https://terraria.org/api/get/dedicated-servers-names")
         LATEST_FILE=$(echo "$DOWNLOAD_PAGE" | jq -r '.[0]' 2>/dev/null || echo "terraria-server-1451.zip")
         VERSION=$(echo "$LATEST_FILE" | grep -oP '\d+' | head -1)
@@ -235,12 +318,10 @@ if [ "$NEED_DOWNLOAD" = true ]; then
         mkdir -p server-extract
         unzip -o server-download.zip -d server-extract
 
-        # Find Linux folder
         LINUX_DIR=$(find server-extract -type d -name "Linux" | head -1)
         if [ -n "$LINUX_DIR" ]; then
             cp -r "$LINUX_DIR"/* "$INSTALL_DIR/"
         else
-            # Try numeric folder
             NUMERIC_DIR=$(find server-extract -maxdepth 1 -type d -regex '.*/[0-9]+' | head -1)
             if [ -n "$NUMERIC_DIR" ] && [ -d "$NUMERIC_DIR/Linux" ]; then
                 cp -r "$NUMERIC_DIR/Linux"/* "$INSTALL_DIR/"
@@ -249,7 +330,6 @@ if [ "$NEED_DOWNLOAD" = true ]; then
 
         SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer.bin.x86_64" -type f 2>/dev/null | head -1)
         [ -z "$SERVER_BIN" ] && SERVER_BIN=$(find "$INSTALL_DIR" -name "TerrariaServer" -type f 2>/dev/null | head -1)
-
         echo "1.4.5.$VERSION" > "$INSTALL_DIR/.server_version"
     fi
 
@@ -262,6 +342,7 @@ if [ "$NEED_DOWNLOAD" = true ]; then
     else
         echo "ERROR: Could not find server binary!"
         ls -la "$INSTALL_DIR/"
+        [ "$SERVER_TYPE" = "tmodloader" ] && ls -la "$INSTALL_DIR/tModLoader/" 2>/dev/null || true
         exit 1
     fi
 
@@ -276,7 +357,7 @@ fi
 # ============================================================
 echo "[6/8] Checking configuration files..."
 
-# Server config
+# Server config (same format for all types)
 if [ ! -f "$INSTALL_DIR/serverconfig.txt" ]; then
     cat > "$INSTALL_DIR/serverconfig.txt" << EOF
 # Terraria Server Configuration
@@ -347,6 +428,8 @@ fi
 
 # Admin .env file
 NEW_INSTALL=false
+MODS_DIR_PATH="$INSTALL_DIR/.local/share/Terraria/tModLoader/Mods"
+
 if [ ! -f "$INSTALL_DIR/admin/.env" ]; then
     NEW_INSTALL=true
     ADMIN_PASSWORD=$(openssl rand -hex 16)
@@ -361,13 +444,22 @@ SECRET_KEY=$SECRET_KEY
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=$ADMIN_PASSWORD
 SERVER_TYPE=$SERVER_TYPE
+MODS_DIR=$MODS_DIR_PATH
+SCREEN_SESSION=terraria
 EOF
     chmod 600 "$INSTALL_DIR/admin/.env"
     echo "Created: admin/.env"
 else
-    # Update server type in .env
-    sed -i "s/^SERVER_TYPE=.*/SERVER_TYPE=$SERVER_TYPE/" "$INSTALL_DIR/admin/.env" 2>/dev/null || \
+    # Update server type and mods dir in .env
+    sed -i "s|^SERVER_TYPE=.*|SERVER_TYPE=$SERVER_TYPE|" "$INSTALL_DIR/admin/.env" 2>/dev/null || \
         echo "SERVER_TYPE=$SERVER_TYPE" >> "$INSTALL_DIR/admin/.env"
+
+    if ! grep -q "^MODS_DIR=" "$INSTALL_DIR/admin/.env"; then
+        echo "MODS_DIR=$MODS_DIR_PATH" >> "$INSTALL_DIR/admin/.env"
+    fi
+    if ! grep -q "^SCREEN_SESSION=" "$INSTALL_DIR/admin/.env"; then
+        echo "SCREEN_SESSION=terraria" >> "$INSTALL_DIR/admin/.env"
+    fi
     echo "Exists: admin/.env"
 fi
 
@@ -376,7 +468,6 @@ fi
 # ============================================================
 echo "[7/8] Checking Python environment and admin files..."
 
-# Copy admin files only if source != destination
 if [ -d "$SCRIPT_DIR/admin" ] && [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
     find "$SCRIPT_DIR/admin" -maxdepth 1 -type f ! -name ".env" -exec cp {} "$INSTALL_DIR/admin/" \;
     cp -r "$SCRIPT_DIR/admin/templates/"* "$INSTALL_DIR/admin/templates/" 2>/dev/null || true
@@ -387,14 +478,13 @@ if [ ! -d "$INSTALL_DIR/admin/venv" ]; then
     echo "Creating Python virtual environment..."
     python3 -m venv "$INSTALL_DIR/admin/venv"
     "$INSTALL_DIR/admin/venv/bin/pip" install --upgrade pip
-    "$INSTALL_DIR/admin/venv/bin/pip" install flask gunicorn requests python-dotenv
+    "$INSTALL_DIR/admin/venv/bin/pip" install flask gunicorn requests python-dotenv werkzeug
     echo "Created: admin/venv"
 else
     echo "Exists: admin/venv"
-    "$INSTALL_DIR/admin/venv/bin/pip" install -q --upgrade flask gunicorn requests python-dotenv 2>/dev/null || true
+    "$INSTALL_DIR/admin/venv/bin/pip" install -q --upgrade flask gunicorn requests python-dotenv werkzeug 2>/dev/null || true
 fi
 
-# Copy scripts only if source != destination
 if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
     for script in update.sh; do
         if [ -f "$SCRIPT_DIR/$script" ]; then
@@ -413,7 +503,39 @@ echo "[8/8] Checking systemd services..."
 
 SERVER_BIN=$(cat "$INSTALL_DIR/.server_bin")
 
-cat > /etc/systemd/system/terraria.service << EOF
+if [ "$SERVER_TYPE" = "tmodloader" ]; then
+    # tModLoader uses screen for interactive stdin (commands from web admin)
+    TML_DIR="$INSTALL_DIR/tModLoader"
+    START_SCRIPT=$(find "$TML_DIR" -name "start-tModLoaderServer.sh" -type f 2>/dev/null | head -1)
+    if [ -z "$START_SCRIPT" ]; then
+        START_SCRIPT="$SERVER_BIN"
+    fi
+
+    cat > /etc/systemd/system/terraria.service << EOF
+[Unit]
+Description=Terraria tModLoader Server
+After=network.target
+
+[Service]
+Type=simple
+User=$SERVER_USER
+WorkingDirectory=$TML_DIR
+Environment=HOME=$INSTALL_DIR
+ExecStart=/usr/bin/screen -DmS terraria /bin/bash $START_SCRIPT -config $INSTALL_DIR/serverconfig.txt -tml-skip-update
+ExecStop=/bin/bash -c 'screen -S terraria -p 0 -X eval "stuff \\"exit\\r\\""; sleep 10; screen -S terraria -X quit 2>/dev/null; true'
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+else
+    # TShock / Vanilla: direct execution
+    cat > /etc/systemd/system/terraria.service << EOF
 [Unit]
 Description=Terraria Server ($SERVER_TYPE)
 After=network.target
@@ -433,6 +555,7 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
+fi
 
 cat > /etc/systemd/system/terraria-admin.service << EOF
 [Unit]
@@ -523,7 +646,28 @@ echo "Commands:"
 echo "  sudo systemctl start terraria        # Start server"
 echo "  sudo systemctl start terraria-admin  # Start web admin"
 echo ""
+
+if [ "$SERVER_TYPE" = "tmodloader" ]; then
+    MODS_DIR_DISPLAY="$INSTALL_DIR/.local/share/Terraria/tModLoader/Mods"
+    echo "========================================"
+    echo "  tModLoader SETUP"
+    echo "========================================"
+    echo "  Mods directory: $MODS_DIR_DISPLAY"
+    echo ""
+    echo "  Install mods via web admin UI:"
+    echo "    http://your-server-ip:5000/mods"
+    echo ""
+    echo "  IMPORTANT: All players must install the same"
+    echo "  mods in their tModLoader client before joining!"
+    echo ""
+    echo "  To connect: use tModLoader (free on Steam)"
+    echo "  and enable matching mods, then join your-server-ip:7777"
+    echo "========================================"
+    echo ""
+fi
+
 echo "Switch server type:"
-echo "  sudo ./install.sh --tshock           # Switch to TShock"
-echo "  sudo ./install.sh --vanilla          # Switch to Vanilla"
+echo "  sudo ./install.sh --tshock      # Switch to TShock"
+echo "  sudo ./install.sh --vanilla     # Switch to Vanilla"
+echo "  sudo ./install.sh --tmodloader  # Switch to tModLoader"
 echo ""

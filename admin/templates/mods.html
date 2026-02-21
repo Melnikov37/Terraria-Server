@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Mods - Terraria Admin{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h2>Mods Management</h2>
+    <div class="btn-group">
+        <a href="{{ url_for('mods_search') }}" class="btn btn-primary">Search Catalog</a>
+    </div>
+</div>
+
+{% if server_type != 'tmodloader' %}
+<div class="card">
+    <p style="color: var(--warning);">
+        Mod management is only available for <strong>tModLoader</strong> servers.
+        Current server type: <strong>{{ server_type|upper }}</strong>
+    </p>
+    <p style="color: var(--text-muted); margin-top: 10px;">
+        Re-install with <code>sudo ./install.sh --tmodloader</code> to switch.
+    </p>
+</div>
+{% else %}
+
+<!-- Upload mod -->
+<div class="card">
+    <div class="card-title">Install Mod</div>
+    <div class="grid grid-2">
+        <div>
+            <p style="color: var(--text-muted); margin-bottom: 15px;">
+                Upload a <code>.tmod</code> file downloaded from
+                <a href="https://steamcommunity.com/app/1281930/workshop/" target="_blank" rel="noopener">Steam Workshop</a>
+                or the tModLoader mod browser.
+            </p>
+            <form method="POST" action="{{ url_for('mods_upload') }}" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label>Select .tmod file</label>
+                    <input type="file" name="mod_file" accept=".tmod" required
+                           style="padding: 8px; cursor: pointer;">
+                </div>
+                <button type="submit" class="btn btn-success">Upload & Enable</button>
+            </form>
+        </div>
+        <div style="border-left: 1px solid var(--border); padding-left: 20px;">
+            <p style="color: var(--text-muted); margin-bottom: 10px;"><strong>Or search the catalog:</strong></p>
+            <form method="GET" action="{{ url_for('mods_search') }}">
+                <div class="form-group">
+                    <label>Mod name</label>
+                    <input type="text" name="q" placeholder="e.g. Calamity, Thorium...">
+                </div>
+                <button type="submit" class="btn btn-primary">Search</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Installed mods list -->
+<div class="card">
+    <div class="card-title">
+        Installed Mods ({{ mods|length }})
+        {% if mods %}
+        <span style="color: var(--text-muted); font-size: 0.8rem; margin-left: 10px; text-transform: none; letter-spacing: 0;">
+            — restart server to apply changes
+        </span>
+        {% endif %}
+    </div>
+
+    {% if not mods %}
+    <p style="color: var(--text-muted);">
+        No mods installed. Upload a <code>.tmod</code> file or search the catalog above.
+    </p>
+    <p style="color: var(--text-muted); margin-top: 8px; font-size: 0.9rem;">
+        Mods directory: <code>{{ mods_dir }}</code>
+    </p>
+    {% else %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Mod Name</th>
+                <th>Size</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for mod in mods %}
+            <tr>
+                <td>
+                    <strong>{{ mod.name }}</strong>
+                </td>
+                <td style="color: var(--text-muted); font-size: 0.9rem;">
+                    {{ mod.size_mb }} MB
+                </td>
+                <td>
+                    {% if mod.enabled %}
+                        <span class="badge badge-success">Enabled</span>
+                    {% else %}
+                        <span class="badge badge-danger">Disabled</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="btn-group">
+                        <form method="POST" action="{{ url_for('mods_toggle') }}" class="inline-form">
+                            <input type="hidden" name="mod_name" value="{{ mod.name }}">
+                            <button type="submit" class="btn btn-sm {{ 'btn-warning' if mod.enabled else 'btn-success' }}">
+                                {{ 'Disable' if mod.enabled else 'Enable' }}
+                            </button>
+                        </form>
+                        <form method="POST" action="{{ url_for('mods_delete') }}" class="inline-form"
+                              onsubmit="return confirm('Delete mod {{ mod.name }}? This cannot be undone.');">
+                            <input type="hidden" name="mod_name" value="{{ mod.name }}">
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+
+<!-- Info block -->
+<div class="card" style="border-color: var(--warning);">
+    <div class="card-title" style="color: var(--warning);">Important: Client Requirements</div>
+    <p style="color: var(--text-muted);">
+        All players must install the same mods in their <strong>tModLoader client</strong> before joining.
+        Players without matching mods will be rejected when connecting.
+    </p>
+    <p style="color: var(--text-muted); margin-top: 8px;">
+        How players install mods: open <strong>tModLoader</strong> → Mod Browser → search mod name → Install → Enable → join server.
+    </p>
+</div>
+
+{% endif %}
+{% endblock %}

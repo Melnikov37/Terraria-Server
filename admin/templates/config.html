@@ -75,6 +75,7 @@
     </div>
 </form>
 
+{% if server_type == 'tshock' %}
 <div class="card">
     <div class="card-title">TShock Settings (Read Only)</div>
     <p style="color: var(--text-muted); margin-bottom: 15px;">
@@ -115,6 +116,29 @@
         </tr>
     </table>
 </div>
+{% elif server_type == 'tmodloader' %}
+<div class="card">
+    <div class="card-title">tModLoader Info</div>
+    <table class="table">
+        <tr>
+            <td>Mod management</td>
+            <td><a href="{{ url_for('mods') }}" class="btn btn-primary btn-sm">Open Mods Page</a></td>
+        </tr>
+        <tr>
+            <td>Server communication</td>
+            <td><span class="badge badge-success">Screen session (stdin commands)</span></td>
+        </tr>
+        <tr>
+            <td>Player requirements</td>
+            <td style="color: var(--text-muted);">Players must have tModLoader + same mods installed</td>
+        </tr>
+        <tr>
+            <td>Auto Save</td>
+            <td>Built-in tModLoader auto-save</td>
+        </tr>
+    </table>
+</div>
+{% endif %}
 
 <div class="card">
     <div class="card-title">Server Version</div>
@@ -122,12 +146,14 @@
         <tr>
             <td>Server Type</td>
             <td>
-                <span class="badge {{ 'badge-success' if version.server_type == 'tshock' else 'badge-warning' }}">
-                    {{ version.server_type|upper }}
-                </span>
-                {% if version.server_type == 'tshock' %}
+                {% if version.server_type == 'tmodloader' %}
+                    <span class="badge badge-success">tModLoader</span>
+                    <span style="color: var(--text-muted); margin-left: 10px;">Terraria 1.4.4.x</span>
+                {% elif version.server_type == 'tshock' %}
+                    <span class="badge badge-success">TShock</span>
                     <span style="color: var(--text-muted); margin-left: 10px;">Terraria 1.4.4.9</span>
                 {% else %}
+                    <span class="badge badge-warning">Vanilla</span>
                     <span style="color: var(--text-muted); margin-left: 10px;">Latest Terraria</span>
                 {% endif %}
             </td>
@@ -154,7 +180,10 @@
         </form>
     </div>
     <p style="margin-top: 15px; color: var(--text-muted); font-size: 0.9rem;">
-        Switch server type via SSH: <code>sudo /opt/terraria/install.sh --vanilla</code> or <code>--tshock</code>
+        Switch server type via SSH:
+        <code>sudo /opt/terraria/install.sh --tmodloader</code>
+        | <code>--tshock</code>
+        | <code>--vanilla</code>
     </p>
 </div>
 

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Search Mods - Terraria Admin{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h2>Mod Catalog Search</h2>
+    <a href="{{ url_for('mods') }}" class="btn btn-primary">← Back to Mods</a>
+</div>
+
+<div class="card">
+    <div class="card-title">Search tModLoader Mod Portal</div>
+    <form method="GET" action="{{ url_for('mods_search') }}">
+        <div style="display: flex; gap: 10px; align-items: flex-end;">
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <label>Mod name or keyword</label>
+                <input type="text" name="q" value="{{ query }}" placeholder="e.g. Calamity, Thorium, Boss Checklist...">
+            </div>
+            <button type="submit" class="btn btn-primary" style="height: 42px;">Search</button>
+        </div>
+    </form>
+</div>
+
+{% if error %}
+<div class="card" style="border-color: var(--danger);">
+    <p style="color: var(--danger);">{{ error }}</p>
+    <p style="color: var(--text-muted); margin-top: 8px; font-size: 0.9rem;">
+        If the mod portal is unavailable, download <code>.tmod</code> files manually from
+        <a href="https://steamcommunity.com/app/1281930/workshop/" target="_blank" rel="noopener">Steam Workshop</a>
+        and upload them on the <a href="{{ url_for('mods') }}">Mods page</a>.
+    </p>
+</div>
+
+{% elif results is not none %}
+
+{% if results %}
+<div class="card">
+    <div class="card-title">Results for "{{ query }}" ({{ results|length }})</div>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Mod</th>
+                <th>Author</th>
+                <th>Version</th>
+                <th>Downloads</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for mod in results %}
+            <tr>
+                <td>
+                    <strong>{{ mod.get('displayName') or mod.get('name') }}</strong>
+                    {% if mod.get('description') %}
+                    <div style="color: var(--text-muted); font-size: 0.8rem; margin-top: 3px; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {{ mod.get('description', '') | truncate(100) }}
+                    </div>
+                    {% endif %}
+                </td>
+                <td style="color: var(--text-muted);">{{ mod.get('author', '—') }}</td>
+                <td>
+                    <code style="font-size: 0.85rem;">{{ mod.get('version', '—') }}</code>
+                </td>
+                <td style="color: var(--text-muted);">
+                    {{ '{:,}'.format(mod.get('downloads', 0)) if mod.get('downloads') else '—' }}
+                </td>
+                <td>
+                    {% set dl_url = mod.get('downloadUrl') or mod.get('download_url') or '' %}
+                    {% set mod_id = mod.get('name') or mod.get('mod_name') or '' %}
+                    {% if dl_url and mod_id %}
+                    <form method="POST" action="{{ url_for('mods_download') }}" class="inline-form">
+                        <input type="hidden" name="mod_name" value="{{ mod_id }}">
+                        <input type="hidden" name="download_url" value="{{ dl_url }}">
+                        <button type="submit" class="btn btn-success btn-sm">Install</button>
+                    </form>
+                    {% else %}
+                    <span style="color: var(--text-muted); font-size: 0.85rem;">Manual install required</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% else %}
+<div class="card">
+    <p style="color: var(--text-muted);">No mods found for "{{ query }}".</p>
+    <p style="color: var(--text-muted); margin-top: 8px; font-size: 0.9rem;">
+        Try a different search term, or download the mod manually from
+        <a href="https://steamcommunity.com/app/1281930/workshop/" target="_blank" rel="noopener">Steam Workshop</a>.
+    </p>
+</div>
+{% endif %}
+
+{% elif query %}
+<div class="card">
+    <p style="color: var(--text-muted);">Searching…</p>
+</div>
+{% endif %}
+
+{% endblock %}

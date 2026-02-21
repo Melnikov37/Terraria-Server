@@ -50,6 +50,61 @@
     <p style="color: var(--text-muted);">Server is offline. Start the server to access more controls.</p>
 </div>
 
+{% elif status.server_type == 'tmodloader' %}
+<!-- tModLoader controls -->
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-title">Time Control</div>
+        <form method="POST" action="{{ url_for('set_time') }}">
+            <div class="form-group">
+                <label>Set Time</label>
+                <select name="time">
+                    <option value="day">Dawn</option>
+                    <option value="noon">Noon</option>
+                    <option value="night">Dusk</option>
+                    <option value="midnight">Midnight</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Set Time</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Broadcast Message</div>
+        <form method="POST" action="{{ url_for('broadcast') }}">
+            <div class="form-group">
+                <label>Message</label>
+                <input type="text" name="message" required placeholder="Message to all players">
+            </div>
+            <button type="submit" class="btn btn-primary">Send</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">Save World</div>
+    <form method="POST" action="{{ url_for('save_world') }}">
+        <button type="submit" class="btn btn-success">Save World Now</button>
+        <span style="color: var(--text-muted); margin-left: 15px; font-size: 0.9rem;">
+            tModLoader also auto-saves periodically
+        </span>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-title">Execute Server Command</div>
+    <form method="POST" action="{{ url_for('run_command') }}">
+        <div class="form-group">
+            <label>Command (sent directly to server stdin)</label>
+            <input type="text" name="command" required placeholder="e.g. players, save, dawn, kick PlayerName">
+            <small style="color: var(--text-muted); display: block; margin-top: 5px;">
+                Available: dawn, noon, dusk, midnight, save, players, say &lt;msg&gt;, kick &lt;name&gt;, ban &lt;name&gt;, exit
+            </small>
+        </div>
+        <button type="submit" class="btn btn-primary">Execute</button>
+    </form>
+</div>
+
 {% elif status.server_type == 'tshock' %}
 <!-- TShock controls -->
 <div class="grid grid-2">
