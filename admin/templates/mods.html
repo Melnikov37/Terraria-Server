@@ -21,36 +21,36 @@
 </div>
 {% else %}
 
+<!-- Install from Steam Workshop -->
+<div class="card">
+    <div class="card-title">Install from Steam Workshop</div>
+    <p style="color: var(--text-muted); margin-bottom: 15px;">
+        Paste a <strong>Workshop ID</strong> — the server downloads the mod automatically via steamcmd.
+        Find the ID in the Workshop URL: <code>steamcommunity.com/sharedfiles/filedetails/?id=<strong>2824688072</strong></code>
+    </p>
+    <form method="POST" action="{{ url_for('mods_workshop') }}">
+        <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;">
+            <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+                <label>Workshop ID</label>
+                <input type="text" name="workshop_id" placeholder="e.g. 2824688072" pattern="\d+" required>
+            </div>
+            <button type="submit" class="btn btn-success" style="height: 42px;">Download & Install</button>
+            <a href="{{ url_for('mods_search') }}" class="btn btn-primary" style="height: 42px; line-height: 26px;">Popular mods list</a>
+        </div>
+    </form>
+</div>
+
 <!-- Upload mod -->
 <div class="card">
-    <div class="card-title">Install Mod</div>
-    <div class="grid grid-2">
-        <div>
-            <p style="color: var(--text-muted); margin-bottom: 15px;">
-                Upload a <code>.tmod</code> file downloaded from
-                <a href="https://steamcommunity.com/app/1281930/workshop/" target="_blank" rel="noopener">Steam Workshop</a>
-                or the tModLoader mod browser.
-            </p>
-            <form method="POST" action="{{ url_for('mods_upload') }}" enctype="multipart/form-data">
-                <div class="form-group">
-                    <label>Select .tmod file</label>
-                    <input type="file" name="mod_file" accept=".tmod" required
-                           style="padding: 8px; cursor: pointer;">
-                </div>
-                <button type="submit" class="btn btn-success">Upload & Enable</button>
-            </form>
+    <div class="card-title">Upload .tmod file manually</div>
+    <form method="POST" action="{{ url_for('mods_upload') }}" enctype="multipart/form-data">
+        <div style="display: flex; gap: 10px; align-items: flex-end;">
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <input type="file" name="mod_file" accept=".tmod" required style="padding: 8px; cursor: pointer;">
+            </div>
+            <button type="submit" class="btn btn-success" style="height: 42px;">Upload & Enable</button>
         </div>
-        <div style="border-left: 1px solid var(--border); padding-left: 20px;">
-            <p style="color: var(--text-muted); margin-bottom: 10px;"><strong>Or search the catalog:</strong></p>
-            <form method="GET" action="{{ url_for('mods_search') }}">
-                <div class="form-group">
-                    <label>Mod name</label>
-                    <input type="text" name="q" placeholder="e.g. Calamity, Thorium...">
-                </div>
-                <button type="submit" class="btn btn-primary">Search</button>
-            </form>
-        </div>
-    </div>
+    </form>
 </div>
 
 <!-- Installed mods list -->

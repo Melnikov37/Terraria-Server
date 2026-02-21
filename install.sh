@@ -167,6 +167,31 @@ else
     echo "All system packages already installed"
 fi
 
+# steamcmd — required for tModLoader mod downloads from Steam Workshop
+if [ "$SERVER_TYPE" = "tmodloader" ]; then
+    STEAMCMD_DIR="/opt/steamcmd"
+    if [ ! -f "$STEAMCMD_DIR/steamcmd.sh" ]; then
+        echo "Installing steamcmd..."
+        # steamcmd is a 32-bit binary and needs lib32gcc-s1
+        dpkg --add-architecture i386
+        apt-get update -y
+        apt-get install -y lib32gcc-s1
+
+        mkdir -p "$STEAMCMD_DIR"
+        curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \
+            | tar zxf - -C "$STEAMCMD_DIR"
+        chmod +x "$STEAMCMD_DIR/steamcmd.sh"
+
+        # Run once to let it update itself
+        "$STEAMCMD_DIR/steamcmd.sh" +quit || true
+
+        ln -sf "$STEAMCMD_DIR/steamcmd.sh" /usr/local/bin/steamcmd
+        echo "steamcmd installed: $STEAMCMD_DIR/steamcmd.sh"
+    else
+        echo "steamcmd already installed"
+    fi
+fi
+
 # ============================================================
 # STEP 2: Install .NET Runtime
 # ============================================================

@@ -37,8 +37,10 @@ REST_TOKEN     = os.environ.get('REST_TOKEN', '')
 ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin')
 SERVER_TYPE    = os.environ.get('SERVER_TYPE', 'tshock')
-SCREEN_SESSION = os.environ.get('SCREEN_SESSION', 'terraria')
-MODS_DIR       = os.environ.get('MODS_DIR', '/opt/terraria/.local/share/Terraria/tModLoader/Mods')
+SCREEN_SESSION  = os.environ.get('SCREEN_SESSION', 'terraria')
+MODS_DIR        = os.environ.get('MODS_DIR', '/opt/terraria/.local/share/Terraria/tModLoader/Mods')
+STEAMCMD_BIN    = os.environ.get('STEAMCMD_BIN', '/opt/steamcmd/steamcmd.sh')
+TERRARIA_APP_ID = '1281930'
 CONFIG_FILE    = os.path.join(TERRARIA_DIR, 'serverconfig.txt')
 TSHOCK_CONFIG  = os.path.join(TERRARIA_DIR, 'tshock', 'config.json')
 SERVICE_NAME   = 'terraria'
@@ -766,6 +768,74 @@ def mods_delete():
         flash(f'Mod "{mod_name}" deleted. Restart the server to apply.', 'success')
     else:
         flash(f'Mod file not found: {filename}', 'error')
+
+    return redirect(url_for('mods'))
+
+
+@app.route('/mods/workshop', methods=['POST'])
+@login_required
+def mods_workshop():
+    workshop_id = request.form.get('workshop_id', '').strip()
+
+    if not workshop_id.isdigit():
+        flash('Invalid Workshop ID — must be a number only', 'error')
+        return redirect(url_for('mods'))
+
+    steamcmd = STEAMCMD_BIN if os.path.exists(STEAMCMD_BIN) else shutil.which('steamcmd')
+    if not steamcmd:
+        flash('steamcmd not found. Re-run install.sh --tmodloader to install it.', 'error')
+        return redirect(url_for('mods'))
+
+    try:
+        flash(f'Downloading Workshop item {workshop_id}… this may take a minute.', 'success')
+
+        result = subprocess.run(
+            [steamcmd,
+             '+login', 'anonymous',
+             '+workshop_download_item', TERRARIA_APP_ID, workshop_id,
+             '+quit'],
+            capture_output=True, text=True, timeout=300,
+            env={**os.environ, 'HOME': TERRARIA_DIR}
+        )
+
+        # steamcmd stores downloads under HOME/Steam/steamapps/workshop/content/<appid>/<workshopid>/
+        workshop_dir = os.path.join(
+            TERRARIA_DIR, 'Steam', 'steamapps', 'workshop',
+            'content', TERRARIA_APP_ID, workshop_id
+        )
+
+        if not os.path.isdir(workshop_dir):
+            output = (result.stdout + result.stderr)[-1000:]
+            flash(f'Download failed. steamcmd output: {output}', 'error')
+            return redirect(url_for('mods'))
+
+        # Find .tmod file in the downloaded directory
+        tmod_file = next(
+            (os.path.join(workshop_dir, f)
+             for f in os.listdir(workshop_dir) if f.endswith('.tmod')),
+            None
+        )
+
+        if not tmod_file:
+            flash(f'Mod downloaded but no .tmod file found in {workshop_dir}', 'error')
+            return redirect(url_for('mods'))
+
+        # Copy to mods directory and enable
+        os.makedirs(MODS_DIR, exist_ok=True)
+        mod_name = os.path.basename(tmod_file)[:-5]
+        dest = os.path.join(MODS_DIR, os.path.basename(tmod_file))
+        shutil.copy2(tmod_file, dest)
+
+        enabled = _get_enabled_mods()
+        enabled[mod_name] = True
+        _save_enabled_mods(enabled)
+
+        flash(f'Mod "{mod_name}" installed and enabled! Restart server to apply.', 'success')
+
+    except subprocess.TimeoutExpired:
+        flash('Download timed out (5 min). Check server internet connection.', 'error')
+    except Exception as e:
+        flash(f'Error: {e}', 'error')
 
     return redirect(url_for('mods'))
 
