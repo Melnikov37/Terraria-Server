@@ -7,10 +7,13 @@ def _fifo_path(cfg):
 
 
 def screen_send(cmd, cfg):
-    """Write a command to the server's stdin FIFO."""
+    """Write a command to the server's stdin FIFO (non-blocking)."""
+    fifo = _fifo_path(cfg)
     try:
-        fifo = _fifo_path(cfg)
-        with open(fifo, 'w') as f:
+        # O_NONBLOCK prevents blocking when the server is not running
+        # (no reader on the other end of the FIFO).
+        fd = os.open(fifo, os.O_WRONLY | os.O_NONBLOCK)
+        with os.fdopen(fd, 'w') as f:
             f.write(cmd + '\n')
         return True
     except Exception:
