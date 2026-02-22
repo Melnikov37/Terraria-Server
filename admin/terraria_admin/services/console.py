@@ -1,4 +1,4 @@
-import subprocess
+import time
 
 from ..extensions import console_buffer, console_lock, ANSI_ESCAPE, MAX_CONSOLE_LINES
 
@@ -16,31 +16,31 @@ def check_player_event(line, cfg, discord_notify_fn):
 
 
 def start_console_poller(app):
-    """Daemon thread: tail journalctl -f and fill console_buffer."""
+    """Daemon thread: stream Docker container logs and fill console_buffer."""
     import threading
     from ..services.discord import discord_notify
 
     cfg = app.terraria_config
 
     def _run():
-        try:
-            proc = subprocess.Popen(
-                ['journalctl', '-u', cfg.SERVICE_NAME, '-f', '--no-pager',
-                 '--output=cat', '-n', '100'],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
-            )
-            for raw_line in proc.stdout:
-                line = ANSI_ESCAPE.sub(
-                    '', raw_line.decode('utf-8', errors='replace').rstrip()
-                )
-                if not line:
-                    continue
-                with console_lock:
-                    console_buffer.append(line)
-                    if len(console_buffer) > MAX_CONSOLE_LINES:
-                        del console_buffer[0]
-                check_player_event(line, cfg, discord_notify)
-        except Exception:
-            pass
+        while True:
+            try:
+                import docker
+                client = docker.from_env()
+                container = client.containers.get(cfg.SERVER_CONTAINER)
+                for raw_line in container.logs(stream=True, follow=True, tail=100):
+                    line = ANSI_ESCAPE.sub(
+                        '', raw_line.decode('utf-8', errors='replace').rstrip()
+                    )
+                    if not line:
+                        continue
+                    with console_lock:
+                        console_buffer.append(line)
+                        if len(console_buffer) > MAX_CONSOLE_LINES:
+                            del console_buffer[0]
+                    check_player_event(line, cfg, discord_notify)
+            except Exception:
+                # Container not running yet or Docker socket unavailable — retry
+                time.sleep(5)
 
     threading.Thread(target=_run, daemon=True, name='console-poller').start()

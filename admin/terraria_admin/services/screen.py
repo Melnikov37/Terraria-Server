@@ -1,55 +1,45 @@
 import os
-import subprocess
-import tempfile
 import time
 
 
+def _fifo_path(cfg):
+    return os.path.join(cfg.TERRARIA_DIR, '.server-input')
+
+
 def screen_send(cmd, cfg):
-    """Send a command to the server via screen."""
+    """Write a command to the server's stdin FIFO."""
     try:
-        subprocess.run(
-            ['screen', '-S', cfg.SCREEN_SESSION, '-X', 'stuff', f'{cmd}\r'],
-            capture_output=True, timeout=5
-        )
+        fifo = _fifo_path(cfg)
+        with open(fifo, 'w') as f:
+            f.write(cmd + '\n')
         return True
     except Exception:
         return False
 
 
 def screen_capture(cfg, wait=0.6):
-    """Read current screen terminal contents."""
-    try:
-        tmpfile = tempfile.mktemp(suffix='.txt', prefix='tserver_')
-        time.sleep(wait)
-        subprocess.run(
-            ['screen', '-S', cfg.SCREEN_SESSION, '-p', '0', '-X', 'hardcopy', '-h', tmpfile],
-            capture_output=True, timeout=5
-        )
-        if os.path.exists(tmpfile):
-            with open(tmpfile, 'r', errors='ignore') as f:
-                content = f.read()
-            try:
-                os.unlink(tmpfile)
-            except OSError:
-                pass
-            return content
-    except Exception:
-        pass
-    return ''
+    """Return recent server output from the in-memory console buffer."""
+    from ..extensions import console_buffer
+    time.sleep(wait)
+    return '\n'.join(list(console_buffer)[-80:])
 
 
 def is_screen_running(cfg):
-    """Check whether a screen session named SCREEN_SESSION exists."""
+    """Check whether the terraria server container is running."""
     try:
-        result = subprocess.run(
-            ['screen', '-ls'], capture_output=True, text=True, timeout=5
-        )
-        return cfg.SCREEN_SESSION in result.stdout
+        import docker
+        client = docker.from_env()
+        container = client.containers.get(cfg.SERVER_CONTAINER)
+        return container.status == 'running'
     except Exception:
         return False
 
 
 def screen_cmd_output(cmd, cfg, wait=0.8):
-    """Send cmd, wait, return screen output."""
+    """Send cmd to server stdin, wait, return lines added to console buffer since then."""
+    from ..extensions import console_buffer
+    before_len = len(console_buffer)
     screen_send(cmd, cfg)
-    return screen_capture(cfg, wait=wait)
+    time.sleep(wait)
+    new_lines = list(console_buffer)[before_len:]
+    return '\n'.join(new_lines)

@@ -1,8 +1,7 @@
 FROM python:3.11-slim
 
-# System dependencies needed by psutil and screen interactions
+# procps needed by psutil for host process inspection (pid: host)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        screen \
         procps \
     && rm -rf /var/lib/apt/lists/*
 

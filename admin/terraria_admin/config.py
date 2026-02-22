@@ -15,8 +15,9 @@ class Config:
     REST_URL       = os.environ.get('REST_URL', 'http://127.0.0.1:7878')
     REST_TOKEN     = os.environ.get('REST_TOKEN', '')
     ADMIN_TOKEN    = os.environ.get('ADMIN_TOKEN', '')
-    SERVER_TYPE    = os.environ.get('SERVER_TYPE', 'tshock')
-    SCREEN_SESSION = os.environ.get('SCREEN_SESSION', 'terraria')
+    SERVER_TYPE      = os.environ.get('SERVER_TYPE', 'tshock')
+    SCREEN_SESSION   = os.environ.get('SCREEN_SESSION', 'terraria')
+    SERVER_CONTAINER = os.environ.get('SERVER_CONTAINER', 'terraria-server')
     MODS_DIR       = os.environ.get(
         'MODS_DIR',
         '/opt/terraria/.local/share/Terraria/tModLoader/Mods'

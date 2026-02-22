@@ -1,31 +1,42 @@
 services:
-  terraria-admin:
-    image: ${DOCKERHUB_USERNAME:-melnikov37}/terraria-admin:${IMAGE_TAG:-latest}
+  terraria-server:
+    image: ${DOCKERHUB_USERNAME:-melnikov37}/terraria-server:${IMAGE_TAG:-latest}
+    container_name: terraria-server
     restart: unless-stopped
     ports:
-      - "5000:5000"
-    pid: host                        # allows reading host /proc for process detection
+      - "7777:7777/tcp"
+      - "7777:7777/udp"
     volumes:
-      # host screen sockets (for screen -S terraria -X stuff "...")
-      - /run/screen:/run/screen
-      # server files — adjust paths to match your actual server layout
       - /opt/terraria:/opt/terraria
+    environment:
+      - TERRARIA_DIR=/opt/terraria
+      - PORT=${SERVER_PORT:-7777}
+      - MAX_PLAYERS=${MAX_PLAYERS:-8}
+      - WORLD_NAME=${WORLD_NAME:-TerrariaWorld}
+      - DIFFICULTY=${DIFFICULTY:-0}
+      - AUTOCREATE=${AUTOCREATE:-2}
+      - SERVER_PASSWORD=${SERVER_PASSWORD:-}
+    stop_grace_period: 30s
+
+  terraria-admin:
+    image: ${DOCKERHUB_USERNAME:-melnikov37}/terraria-admin:${IMAGE_TAG:-latest}
+    container_name: terraria-admin
+    restart: unless-stopped
+    depends_on:
+      - terraria-server
+    ports:
+      - "5000:5000"
+    pid: host                        # allows psutil to see host processes for system metrics
+    volumes:
+      - /opt/terraria:/opt/terraria
+      - /var/run/docker.sock:/var/run/docker.sock   # Docker SDK control
     environment:
       - SECRET_KEY=${SECRET_KEY}
       - ADMIN_TOKEN=${ADMIN_TOKEN}
-      - SERVER_CONFIG=${SERVER_CONFIG:-/opt/terraria/server.ini}
-      - WORLD_DIR=${WORLD_DIR:-/opt/terraria/worlds}
-      - BACKUP_DIR=${BACKUP_DIR:-/opt/terraria/backups}
-      - MOD_DIR=${MOD_DIR:-/opt/terraria/tModLoader/Mods}
-      - SCREEN_NAME=${SCREEN_NAME:-terraria}
-      - SERVICE_NAME=${SERVICE_NAME:-terraria}
+      - TERRARIA_DIR=/opt/terraria
+      - SERVER_CONTAINER=terraria-server
       - SERVER_TYPE=${SERVER_TYPE:-tmodloader}
-      - TSHOCK_TOKEN=${TSHOCK_TOKEN:-}
-      - TSHOCK_HOST=${TSHOCK_HOST:-http://localhost:7878}
+      - MOD_DIR=${MOD_DIR:-/opt/terraria/tModLoader/Mods}
       - DISCORD_CONFIG=${DISCORD_CONFIG:-/opt/terraria/discord.json}
       - LOG_FILE=${LOG_FILE:-/opt/terraria/terraria.log}
-      - STEAMCMD_PATH=${STEAMCMD_PATH:-/usr/games/steamcmd}
-      - STEAMCMD_WORKSHOP_DIR=${STEAMCMD_WORKSHOP_DIR:-/root/Steam/steamapps/workshop}
-    # Run as same UID as the terraria server process so screen sockets are accessible.
-    # Change to match the user running the terraria server on the host.
     user: "0:0"

@@ -1,5 +1,4 @@
 import os
-import subprocess
 
 from .tshock import rest_call
 from .screen import is_screen_running, screen_cmd_output
@@ -14,12 +13,12 @@ def get_server_type(cfg):
 
 
 def _service_active(cfg):
+    """Return True if the terraria server Docker container is running."""
     try:
-        result = subprocess.run(
-            ['/usr/bin/systemctl', 'is-active', cfg.SERVICE_NAME],
-            capture_output=True, text=True, timeout=5
-        )
-        return result.stdout.strip() == 'active'
+        import docker
+        client = docker.from_env()
+        container = client.containers.get(cfg.SERVER_CONTAINER)
+        return container.status == 'running'
     except Exception:
         return False
 

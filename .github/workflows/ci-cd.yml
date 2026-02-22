@@ -5,6 +5,8 @@ on:
     branches: [main, master]
     paths:
       - "admin/**"
+      - "server.Dockerfile"
+      - "server-entrypoint.sh"
       - ".github/workflows/ci-cd.yml"
   pull_request:
     branches: [main, master]
@@ -13,7 +15,8 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/terraria-admin
+  ADMIN_IMAGE:  ${{ secrets.DOCKERHUB_USERNAME }}/terraria-admin
+  SERVER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/terraria-server
 
 jobs:
   # ── Lint / syntax check ───────────────────────────────────────────────────
@@ -40,7 +43,6 @@ jobs:
         run: |
           python - <<'EOF'
           import sys, os
-          # Avoid triggering bootstrap_admins / background threads
           os.environ.setdefault("SECRET_KEY", "ci-test-key")
           os.environ.setdefault("TERRARIA_DIR", "/tmp/terraria")
 
@@ -52,27 +54,18 @@ jobs:
               print(" ", r)
           EOF
 
-  # ── Build & push Docker image ─────────────────────────────────────────────
+  # ── Build & push Docker images ────────────────────────────────────────────
   build-push:
-    name: Build & push image
+    name: Build & push images
     needs: lint
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
     outputs:
-      image_tag: ${{ steps.meta.outputs.version }}
+      image_tag: ${{ steps.meta-admin.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=sha-,format=short
-            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -83,15 +76,46 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push
+      # ── Admin image ──────────────────────────────────────────────────────
+      - name: Docker meta (admin)
+        id: meta-admin
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ADMIN_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push admin image
         uses: docker/build-push-action@v6
         with:
           context: ./admin
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
-          cache-to:   type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
+          tags: ${{ steps.meta-admin.outputs.tags }}
+          labels: ${{ steps.meta-admin.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.ADMIN_IMAGE }}:buildcache
+          cache-to:   type=registry,ref=${{ env.ADMIN_IMAGE }}:buildcache,mode=max
+
+      # ── Server image ─────────────────────────────────────────────────────
+      - name: Docker meta (server)
+        id: meta-server
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.SERVER_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./server.Dockerfile
+          push: true
+          tags: ${{ steps.meta-server.outputs.tags }}
+          labels: ${{ steps.meta-server.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.SERVER_IMAGE }}:buildcache
+          cache-to:   type=registry,ref=${{ env.SERVER_IMAGE }}:buildcache,mode=max
 
   # ── Deploy via SSH ────────────────────────────────────────────────────────
   deploy:
@@ -110,9 +134,9 @@ jobs:
           key:      ${{ secrets.SSH_PRIVATE_KEY }}
           source:   "admin/docker-compose.yml"
           target:   "~/terraria-admin"
-          strip_components: 1   # removes the "admin/" prefix on the remote
+          strip_components: 1
 
-      - name: Pull new image & recreate container
+      - name: Pull new images & recreate containers
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.SSH_HOST }}
@@ -120,7 +144,7 @@ jobs:
           key:      ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
-            mkdir -p ~/terraria-admin
+            mkdir -p ~/terraria-admin /opt/terraria
             cd ~/terraria-admin
             printf '%s\n' \
               'SECRET_KEY=${{ secrets.SECRET_KEY }}' \

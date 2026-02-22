@@ -1,6 +1,3 @@
-import os
-import subprocess
-
 from flask import Blueprint, current_app, flash, redirect, render_template, url_for
 
 from ..decorators import login_required
@@ -28,21 +25,23 @@ def server_control(action):
         return redirect(url_for('dashboard.dashboard'))
 
     try:
-        result = subprocess.run(
-            ['/usr/bin/sudo', '/usr/bin/systemctl', action, f'{cfg.SERVICE_NAME}.service'],
-            capture_output=True, text=True, timeout=30,
-            env={**os.environ, 'PATH': '/usr/bin:/bin'}
-        )
-        if result.returncode == 0:
-            flash(f'Server {action}ed', 'success')
-            if action == 'start':
-                discord_notify('Server started :white_check_mark:', cfg, color=0x3fb950, event='start')
-            elif action == 'stop':
-                discord_notify('Server stopped :octagonal_sign:', cfg, color=0xf85149, event='stop')
-            elif action == 'restart':
-                discord_notify('Server restarted :arrows_counterclockwise:', cfg, color=0xd29922, event='stop')
-        else:
-            flash(f'Error: {result.stderr or result.stdout}', 'error')
+        import docker
+        client = docker.from_env()
+        container = client.containers.get(cfg.SERVER_CONTAINER)
+
+        if action == 'start':
+            container.start()
+            flash('Server started', 'success')
+            discord_notify('Server started :white_check_mark:', cfg, color=0x3fb950, event='start')
+        elif action == 'stop':
+            container.stop(timeout=30)
+            flash('Server stopped', 'success')
+            discord_notify('Server stopped :octagonal_sign:', cfg, color=0xf85149, event='stop')
+        elif action == 'restart':
+            container.restart(timeout=30)
+            flash('Server restarted', 'success')
+            discord_notify('Server restarted :arrows_counterclockwise:', cfg, color=0xd29922, event='stop')
+
     except Exception as e:
         flash(f'Error: {e}', 'error')
 
