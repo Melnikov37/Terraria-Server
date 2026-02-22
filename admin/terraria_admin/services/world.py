@@ -3,7 +3,7 @@ from datetime import datetime
 
 import requests
 
-from .server import get_server_type, _stored_version
+from .server import get_server_type, _stored_version, container_action
 
 
 def list_worlds(cfg):
@@ -68,7 +68,6 @@ def get_version_info(cfg):
 def update_tmodloader(cfg):
     """Download and install the latest tModLoader release. Returns (success, message)."""
     import shutil
-    import subprocess
     import tempfile
     import time
     import zipfile
@@ -102,10 +101,10 @@ def update_tmodloader(cfg):
         if os.path.isdir(tml_dir) and not os.path.isdir(backup_dir):
             shutil.copytree(tml_dir, backup_dir)
 
-        subprocess.run(
-            ['/usr/bin/sudo', '/usr/bin/systemctl', 'stop', 'terraria.service'],
-            capture_output=True, timeout=30
-        )
+        try:
+            container_action('stop', cfg)
+        except Exception:
+            pass
         time.sleep(2)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -122,10 +121,10 @@ def update_tmodloader(cfg):
         with open(os.path.join(cfg.TERRARIA_DIR, '.server_version'), 'w') as f:
             f.write(latest_tag)
 
-        subprocess.run(
-            ['/usr/bin/sudo', '/usr/bin/systemctl', 'start', 'terraria.service'],
-            capture_output=True, timeout=30
-        )
+        try:
+            container_action('start', cfg)
+        except Exception:
+            pass
         return True, f'tModLoader updated: {current} → {latest_tag}. Server restarting.'
 
     except Exception as exc:

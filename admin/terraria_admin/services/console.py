@@ -1,6 +1,9 @@
+import logging
 import time
 
 from ..extensions import console_buffer, console_lock, ANSI_ESCAPE, MAX_CONSOLE_LINES
+
+log = logging.getLogger(__name__)
 
 
 def check_player_event(line, cfg, discord_notify_fn):
@@ -23,10 +26,10 @@ def start_console_poller(app):
     cfg = app.terraria_config
 
     def _run():
+        import docker
+        client = docker.from_env()
         while True:
             try:
-                import docker
-                client = docker.from_env()
                 container = client.containers.get(cfg.SERVER_CONTAINER)
                 for raw_line in container.logs(stream=True, follow=True, tail=100):
                     line = ANSI_ESCAPE.sub(
@@ -39,8 +42,13 @@ def start_console_poller(app):
                         if len(console_buffer) > MAX_CONSOLE_LINES:
                             del console_buffer[0]
                     check_player_event(line, cfg, discord_notify)
-            except Exception:
-                # Container not running yet or Docker socket unavailable — retry
+            except Exception as exc:
+                log.warning('Console poller error (retry in 5s): %s', exc)
+                try:
+                    client.close()
+                except Exception:
+                    pass
                 time.sleep(5)
+                client = docker.from_env()
 
     threading.Thread(target=_run, daemon=True, name='console-poller').start()

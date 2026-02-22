@@ -23,6 +23,19 @@ def _service_active(cfg):
         return False
 
 
+def container_action(action, cfg):
+    """Start, stop, or restart the terraria server container via Docker SDK."""
+    import docker
+    client = docker.from_env()
+    container = client.containers.get(cfg.SERVER_CONTAINER)
+    if action == 'stop':
+        container.stop(timeout=30)
+    elif action == 'start':
+        container.start()
+    elif action == 'restart':
+        container.restart(timeout=30)
+
+
 def _stored_version(cfg):
     version_file = os.path.join(cfg.TERRARIA_DIR, '.server_version')
     if os.path.exists(version_file):
@@ -66,9 +79,8 @@ def get_server_status(cfg):
             }
 
     if server_type == 'tmodloader':
-        screen_active = service_running and is_screen_running(cfg)
         return {
-            'online': screen_active,
+            'online': service_running,  # already checked via Docker SDK in _service_active
             'service': service_running,
             'server_type': server_type,
             'version': version,

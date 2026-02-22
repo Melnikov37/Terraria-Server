@@ -137,7 +137,7 @@ def parse_tmod_dependencies(tmod_path):
 def extract_tmod_version(tmod_path):
     """Read mod name and version from .tmod header."""
     with open(tmod_path, 'rb') as fh:
-        raw = fh.read(512)
+        raw = fh.read(2048)  # 512 was too small for mods with long names/versions
     pos = 4
     _, pos = _read_7bit_string(raw, pos)   # tML version
     pos += 20 + 256 + 4                    # hash + sig + datalen
@@ -266,6 +266,8 @@ def list_mods(cfg):
 
 def download_mod_from_workshop(steamcmd, workshop_id, cfg):
     """Download a Workshop item and copy the .tmod into MODS_DIR."""
+    steamcmd_home = '/tmp/steamcmd_home'
+    os.makedirs(steamcmd_home, exist_ok=True)
     try:
         result = subprocess.run(
             [steamcmd,
@@ -273,11 +275,11 @@ def download_mod_from_workshop(steamcmd, workshop_id, cfg):
              '+workshop_download_item', cfg.TERRARIA_APP_ID, workshop_id,
              '+quit'],
             capture_output=True, text=True, timeout=300,
-            env={**os.environ, 'HOME': cfg.TERRARIA_DIR}
+            env={**os.environ, 'HOME': steamcmd_home}
         )
 
         workshop_dir = os.path.join(
-            cfg.TERRARIA_DIR, 'Steam', 'steamapps', 'workshop',
+            steamcmd_home, 'Steam', 'steamapps', 'workshop',
             'content', cfg.TERRARIA_APP_ID, workshop_id
         )
 

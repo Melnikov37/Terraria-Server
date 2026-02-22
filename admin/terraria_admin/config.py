@@ -18,12 +18,13 @@ class Config:
     SERVER_TYPE      = os.environ.get('SERVER_TYPE', 'tshock')
     SCREEN_SESSION   = os.environ.get('SCREEN_SESSION', 'terraria')
     SERVER_CONTAINER = os.environ.get('SERVER_CONTAINER', 'terraria-server')
+    LOG_FILE         = os.environ.get('LOG_FILE', None)
     MODS_DIR       = os.environ.get(
         'MODS_DIR',
         '/opt/terraria/.local/share/Terraria/tModLoader/Mods'
     )
     STEAMCMD_BIN   = os.environ.get('STEAMCMD_BIN', '/opt/steamcmd/steamcmd.sh')
-    TERRARIA_APP_ID = '1281930'
+    TERRARIA_APP_ID = '105600'  # Terraria Workshop App ID (not tModLoader 1281930)
 
     MOD_UPDATE_INTERVAL_HOURS  = int(os.environ.get('MOD_UPDATE_INTERVAL_HOURS', '0'))
     BACKUP_KEEP_COUNT          = int(os.environ.get('BACKUP_KEEP_COUNT', '24'))

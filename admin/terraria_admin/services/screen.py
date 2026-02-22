@@ -40,9 +40,12 @@ def is_screen_running(cfg):
 
 def screen_cmd_output(cmd, cfg, wait=0.8):
     """Send cmd to server stdin, wait, return lines added to console buffer since then."""
-    from ..extensions import console_buffer
-    before_len = len(console_buffer)
-    screen_send(cmd, cfg)
+    from ..extensions import console_buffer, console_lock
+    with console_lock:
+        before_len = len(console_buffer)
+    if not screen_send(cmd, cfg):
+        return ''
     time.sleep(wait)
-    new_lines = list(console_buffer)[before_len:]
+    with console_lock:
+        new_lines = list(console_buffer)[before_len:]
     return '\n'.join(new_lines)

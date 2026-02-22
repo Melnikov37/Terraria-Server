@@ -36,7 +36,7 @@ services:
       - TERRARIA_DIR=/opt/terraria
       - SERVER_CONTAINER=terraria-server
       - SERVER_TYPE=${SERVER_TYPE:-tmodloader}
-      - MOD_DIR=${MOD_DIR:-/opt/terraria/tModLoader/Mods}
+      - MODS_DIR=${MODS_DIR:-/opt/terraria/tModLoader/Mods}
       - DISCORD_CONFIG=${DISCORD_CONFIG:-/opt/terraria/discord.json}
       - LOG_FILE=${LOG_FILE:-/opt/terraria/terraria.log}
     user: "0:0"

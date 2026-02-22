@@ -1,6 +1,5 @@
 import os
 import shutil
-import subprocess
 import time
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
@@ -8,6 +7,7 @@ from flask import Blueprint, current_app, flash, redirect, render_template, requ
 from ..decorators import login_required
 from ..services.backups import create_backup, list_backups, prune_auto_backups
 from ..services.discord import discord_notify
+from ..services.server import container_action
 
 bp = Blueprint('backups', __name__)
 
@@ -50,10 +50,10 @@ def backups_restore():
         flash('Backup not found', 'error')
         return redirect(url_for('backups.backups'))
     try:
-        subprocess.run(
-            ['/usr/bin/sudo', '/usr/bin/systemctl', 'stop', 'terraria.service'],
-            capture_output=True, timeout=30
-        )
+        try:
+            container_action('stop', cfg)
+        except Exception:
+            pass
         time.sleep(3)
         os.makedirs(cfg.WORLDS_DIR, exist_ok=True)
         for fname in os.listdir(backup_path):
@@ -62,10 +62,10 @@ def backups_restore():
                     os.path.join(backup_path, fname),
                     os.path.join(cfg.WORLDS_DIR, fname)
                 )
-        subprocess.run(
-            ['/usr/bin/sudo', '/usr/bin/systemctl', 'start', 'terraria.service'],
-            capture_output=True, timeout=30
-        )
+        try:
+            container_action('start', cfg)
+        except Exception:
+            pass
         flash(f'Restored from "{backup_name}". Server restarting.', 'success')
     except Exception as exc:
         flash(f'Restore failed: {exc}', 'error')

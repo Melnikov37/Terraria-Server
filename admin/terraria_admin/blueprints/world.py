@@ -1,13 +1,12 @@
 import os
 import shutil
-import subprocess
 import time
 from datetime import datetime
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 
 from ..decorators import login_required
-from ..services.server import get_server_status, get_server_type
+from ..services.server import get_server_status, get_server_type, container_action
 from ..services.tshock import rest_call
 from ..services.screen import screen_send
 from ..services.world import list_worlds
@@ -136,10 +135,10 @@ def recreate_world():
     difficulty = request.form.get('difficulty', '0')
 
     try:
-        subprocess.run(
-            ['/usr/bin/sudo', '/usr/bin/systemctl', 'stop', 'terraria.service'],
-            capture_output=True, timeout=30
-        )
+        try:
+            container_action('stop', cfg)
+        except Exception:
+            pass
         time.sleep(3)
 
         worlds_dir = cfg.WORLDS_DIR
@@ -176,10 +175,10 @@ def recreate_world():
         with open(cfg.CONFIG_FILE, 'w') as f:
             f.write('\n'.join(config_lines) + '\n')
 
-        subprocess.run(
-            ['/usr/bin/sudo', '/usr/bin/systemctl', 'start', 'terraria.service'],
-            capture_output=True, timeout=30
-        )
+        try:
+            container_action('start', cfg)
+        except Exception:
+            pass
         flash(f'World "{worldname}" will be created on server start. Old world backed up.', 'success')
     except Exception as e:
         flash(f'Error: {e}', 'error')
@@ -221,11 +220,11 @@ def world_switch():
     try:
         with open(cfg.CONFIG_FILE, 'w') as f:
             f.write('\n'.join(lines) + '\n')
-        subprocess.run(
-            ['/usr/bin/sudo', '/usr/bin/systemctl', 'restart', 'terraria.service'],
-            capture_output=True, timeout=30
-        )
-        flash(f'Switched to world "{world_name}". Server restarting\u2026', 'success')
+        try:
+            container_action('restart', cfg)
+        except Exception:
+            pass
+        flash(f'Switched to world "{world_name}". Server restarting…', 'success')
     except Exception as exc:
         flash(f'Error: {exc}', 'error')
 
