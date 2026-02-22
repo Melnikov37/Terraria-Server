@@ -70,12 +70,12 @@
                 <td>
                     <div class="btn-group">
                         <form method="POST" action="{{ url_for('backups.backups_restore') }}" class="inline-form"
-                              onsubmit="return confirm('Restore from {{ b.name }}? Server will restart. Continue?');">
+                              onsubmit="return confirm('Restore from {{ b.name|e }}? Server will restart. Continue?');">
                             <input type="hidden" name="backup_name" value="{{ b.name }}">
                             <button type="submit" class="btn btn-warning btn-sm">Restore</button>
                         </form>
                         <form method="POST" action="{{ url_for('backups.backups_delete') }}" class="inline-form"
-                              onsubmit="return confirm('Delete backup {{ b.name }}?');">
+                              onsubmit="return confirm('Delete backup {{ b.name|e }}?');">
                             <input type="hidden" name="backup_name" value="{{ b.name }}">
                             <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                         </form>

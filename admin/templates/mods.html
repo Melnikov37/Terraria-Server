@@ -131,7 +131,7 @@
                         </form>
                         {% endif %}
                         <form method="POST" action="{{ url_for('mods.mods_delete') }}" class="inline-form"
-                              onsubmit="return confirm('Delete mod {{ mod.name }}? This cannot be undone.');">
+                              onsubmit="return confirm('Delete mod {{ mod.name|e }}? This cannot be undone.');">
                             <input type="hidden" name="mod_name" value="{{ mod.name }}">
                             <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                         </form>

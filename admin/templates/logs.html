@@ -75,8 +75,9 @@ function loadLogs() {
                 out.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(data.error)}</span>`;
                 return;
             }
-            out.innerHTML = data.lines.map(colorize).join('\n');
-            document.getElementById('logMeta').textContent = `${data.lines.length} lines shown`;
+            const lines = data.lines || [];
+            out.innerHTML = lines.map(colorize).join('\n');
+            document.getElementById('logMeta').textContent = `${lines.length} lines shown`;
             if (following) out.scrollTop = out.scrollHeight;
         })
         .catch(() => {

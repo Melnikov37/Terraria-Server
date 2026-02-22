@@ -1,7 +1,7 @@
 import json
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
@@ -37,7 +37,7 @@ def discord_notify(message, cfg, color=0x3fb950, event='info'):
                     'description': message,
                     'color': color,
                     'footer': {'text': 'Terraria Server'},
-                    'timestamp': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z'),
+                    'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.000Z'),
                 }]
             }, timeout=5)
         except Exception:

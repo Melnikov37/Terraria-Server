@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eo pipefail
 
 TERRARIA_DIR="${TERRARIA_DIR:-/opt/terraria}"
 FIFO="${TERRARIA_DIR}/.server-input"
