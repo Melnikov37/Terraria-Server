@@ -207,4 +207,56 @@
         your-server-ip:{{ server_config.get('port', '7777') }}
     </code></p>
 </div>
+
+<div class="card">
+    <div class="card-title">Discord Notifications</div>
+    <p style="color: var(--text-muted); margin-bottom: 15px; font-size: 0.9rem;">
+        Send notifications to a Discord channel via webhook.
+        Create a webhook in your Discord server: Channel Settings → Integrations → Webhooks.
+    </p>
+    <form method="POST" action="{{ url_for('discord_config_save') }}">
+        <div class="form-group">
+            <label>Webhook URL</label>
+            <input type="url" name="webhook_url"
+                   value="{{ discord_config.get('webhook_url', '') }}"
+                   placeholder="https://discord.com/api/webhooks/...">
+        </div>
+        <div class="grid grid-2" style="margin-bottom:15px;">
+            <div>
+                <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;">
+                    <input type="checkbox" name="notify_start" style="width:auto;" {{ 'checked' if discord_config.get('notify_start', True) }}>
+                    Server start
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;">
+                    <input type="checkbox" name="notify_stop" style="width:auto;" {{ 'checked' if discord_config.get('notify_stop', True) }}>
+                    Server stop / restart
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" name="notify_backup" style="width:auto;" {{ 'checked' if discord_config.get('notify_backup', False) }}>
+                    Backup created
+                </label>
+            </div>
+            <div>
+                <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;">
+                    <input type="checkbox" name="notify_join" style="width:auto;" {{ 'checked' if discord_config.get('notify_join', True) }}>
+                    Player join
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;">
+                    <input type="checkbox" name="notify_leave" style="width:auto;" {{ 'checked' if discord_config.get('notify_leave', True) }}>
+                    Player leave
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" name="notify_mod_install" style="width:auto;" {{ 'checked' if discord_config.get('notify_mod_install', False) }}>
+                    Mod installed
+                </label>
+            </div>
+        </div>
+        <div class="btn-group">
+            <button type="submit" class="btn btn-success">Save Discord Settings</button>
+        </div>
+    </form>
+    <form method="POST" action="{{ url_for('discord_test') }}" style="margin-top:10px;" class="inline-form">
+        <button type="submit" class="btn btn-primary">Send Test Notification</button>
+    </form>
+</div>
 {% endblock %}

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Console - Terraria Admin{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h2>Live Console</h2>
+    <div class="btn-group">
+        <button id="btnFollow" class="btn btn-success" onclick="toggleFollow()">Follow ON</button>
+        <button class="btn btn-primary" onclick="clearDisplay()">Clear</button>
+    </div>
+</div>
+
+<div class="card" style="padding: 0;">
+    <div id="output" style="
+        font-family: 'Cascadia Code', 'Fira Mono', 'Consolas', monospace;
+        font-size: 0.82rem;
+        line-height: 1.5;
+        height: 520px;
+        overflow-y: auto;
+        padding: 16px;
+        background: #0d1117;
+        border-radius: 8px;
+        white-space: pre-wrap;
+        word-break: break-all;
+    "></div>
+</div>
+
+<div class="card">
+    <div class="card-title">Send Command</div>
+    <div style="display: flex; gap: 10px;">
+        <input type="text" id="cmdInput" placeholder="e.g. players, save, dawn, say Hello" style="flex:1;"
+               onkeydown="if(event.key==='Enter') sendCmd()">
+        <button class="btn btn-primary" onclick="sendCmd()" style="height:42px;">Send</button>
+    </div>
+    <small style="color: var(--text-muted); display:block; margin-top:8px;">
+        Commands are sent to the server via screen stdin.
+        Available: dawn, noon, dusk, midnight, save, players, say &lt;msg&gt;, kick &lt;name&gt;, ban &lt;name&gt;, exit
+    </small>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const output = document.getElementById('output');
+let cursor = 0;
+let following = true;
+let pollTimer = null;
+
+function colorLine(line) {
+    const lo = line.toLowerCase();
+    if (lo.includes('error') || lo.includes('exception') || lo.includes('fatal') || lo.includes('fail')) {
+        return `<span style="color:#f85149">${escHtml(line)}</span>`;
+    }
+    if (lo.includes('warn')) {
+        return `<span style="color:#d29922">${escHtml(line)}</span>`;
+    }
+    if (lo.includes('has joined') || lo.includes('joined the game')) {
+        return `<span style="color:#3fb950">${escHtml(line)}</span>`;
+    }
+    if (lo.includes('has left') || lo.includes('disconnected')) {
+        return `<span style="color:#8b949e">${escHtml(line)}</span>`;
+    }
+    return escHtml(line);
+}
+
+function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function appendLines(lines) {
+    const html = lines.map(l => colorLine(l)).join('\n') + '\n';
+    output.innerHTML += html;
+    if (following) output.scrollTop = output.scrollHeight;
+}
+
+function poll() {
+    fetch(`/api/console/lines?since=${cursor}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.lines && data.lines.length > 0) {
+                appendLines(data.lines);
+                cursor = data.total;
+            }
+        })
+        .catch(() => {});
+}
+
+function toggleFollow() {
+    following = !following;
+    const btn = document.getElementById('btnFollow');
+    btn.textContent = following ? 'Follow ON' : 'Follow OFF';
+    btn.className = following ? 'btn btn-success' : 'btn btn-primary';
+    if (following) output.scrollTop = output.scrollHeight;
+}
+
+function clearDisplay() {
+    output.innerHTML = '';
+}
+
+function sendCmd() {
+    const input = document.getElementById('cmdInput');
+    const cmd = input.value.trim();
+    if (!cmd) return;
+    input.value = '';
+    fetch('/api/console/send', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({cmd})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.ok) {
+            output.innerHTML += `<span style="color:#f85149">[error] ${escHtml(data.error || 'Send failed')}</span>\n`;
+        } else {
+            output.innerHTML += `<span style="color:#58a6ff">&gt; ${escHtml(cmd)}</span>\n`;
+            if (following) output.scrollTop = output.scrollHeight;
+        }
+    })
+    .catch(() => {});
+}
+
+// Start polling every 2 seconds
+poll();
+pollTimer = setInterval(poll, 2000);
+</script>
+{% endblock %}

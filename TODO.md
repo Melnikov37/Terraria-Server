@@ -2,6 +2,29 @@
 
 ## В работе / Planned
 
+### 8. Live-консоль в браузере ✅
+- [x] Фоновый поток: тейлит `journalctl -u terraria -f` → заполняет `_console_buffer`
+- [x] JS polling каждые 2 сек: `GET /api/console/lines?since=N`
+- [x] Страница `/console` — терминал с подсветкой (ошибки красные, join зелёные)
+- [x] Кнопка "Follow" — автоскролл к новым строкам
+- [x] Поле ввода + "Send" — отправляет команду через screen stdin
+
+### 9. Discord интеграция ✅
+- [x] `_discord_notify()` — fire-and-forget через фоновый поток
+- [x] Настройка webhook URL + чекбоксы событий в `/config`
+- [x] Уведомления: старт/стоп/рестарт сервера
+- [x] Уведомления: join/leave игроков (парсинг journalctl строк)
+- [x] Уведомления: создание бекапа, установка мода
+- [x] Кнопка "Send Test Notification"
+
+### 10. Управление админами ✅
+- [x] Роли: `viewer` (read-only), `admin`, `superadmin`
+- [x] Авто-создание superadmin из env vars при первом запуске (`.admins.json`)
+- [x] Пароли через `werkzeug.security` (bcrypt)
+- [x] Страница `/admins` — список + добавить + удалить + сменить роль
+- [x] Смена пароля своего (любой), чужого (только superadmin)
+- [x] Защита: нельзя удалить/понизить последнего superadmin
+
 ### 1. Авто-бекап миров ✅
 - [x] Фоновый поток: каждый час копирует `worlds/*.wld` в `backups/auto/<timestamp>/`
 - [x] Хранить не более N последних авто-бекапов (`BACKUP_KEEP_COUNT`, default 24)

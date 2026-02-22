@@ -5,6 +5,7 @@ Supports TShock (REST API), Vanilla, and tModLoader (screen-based communication)
 """
 
 import os
+import re
 import json
 import subprocess
 import functools
@@ -19,10 +20,11 @@ from datetime import datetime
 import requests
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, jsonify, session
+    flash, jsonify, session, Response, stream_with_context
 )
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 
 load_dotenv()
 
@@ -85,6 +87,16 @@ SERVICE_NAME   = 'terraria'
 BACKUP_KEEP_COUNT          = int(os.environ.get('BACKUP_KEEP_COUNT', '24'))
 AUTO_BACKUP_INTERVAL_HOURS = int(os.environ.get('AUTO_BACKUP_INTERVAL_HOURS', '1'))
 
+ADMINS_FILE         = os.path.join(TERRARIA_DIR, '.admins.json')
+DISCORD_CONFIG_FILE = os.path.join(TERRARIA_DIR, '.discord.json')
+ROLE_LEVELS         = {'viewer': 0, 'admin': 1, 'superadmin': 2}
+
+# Live console buffer — filled by the background journalctl poller
+MAX_CONSOLE_LINES = 500
+_console_buffer: list = []
+_console_lock     = threading.Lock()
+_ANSI_ESCAPE      = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
 
 def get_server_type():
     type_file = os.path.join(TERRARIA_DIR, '.server_type')
@@ -95,8 +107,40 @@ def get_server_type():
 
 
 # ============================================================
-# Auth
+# Auth — multi-user with roles (viewer / admin / superadmin)
 # ============================================================
+
+def _get_admins():
+    if os.path.exists(ADMINS_FILE):
+        try:
+            with open(ADMINS_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_admins(admins):
+    with open(ADMINS_FILE, 'w') as f:
+        json.dump(admins, f, indent=2)
+    try:
+        os.chmod(ADMINS_FILE, 0o600)
+    except Exception:
+        pass
+
+
+def _bootstrap_admins():
+    """Create initial superadmin from env vars if admins file does not exist."""
+    if os.path.exists(ADMINS_FILE):
+        return
+    _save_admins({
+        ADMIN_USERNAME: {
+            'password_hash': generate_password_hash(ADMIN_PASSWORD),
+            'role': 'superadmin',
+            'created_at': datetime.now().isoformat(timespec='seconds'),
+        }
+    })
+
 
 def login_required(f):
     @functools.wraps(f)
@@ -107,14 +151,32 @@ def login_required(f):
     return decorated
 
 
+def require_role(min_role='admin'):
+    """Decorator: require login and a minimum role level."""
+    def decorator(f):
+        @functools.wraps(f)
+        def decorated(*args, **kwargs):
+            if not session.get('logged_in'):
+                return redirect(url_for('login'))
+            role = session.get('role', 'viewer')
+            if ROLE_LEVELS.get(role, 0) < ROLE_LEVELS.get(min_role, 0):
+                flash('Insufficient permissions', 'error')
+                return redirect(url_for('dashboard'))
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form.get('username', '')
+        username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
-        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        admin = _get_admins().get(username)
+        if admin and check_password_hash(admin.get('password_hash', ''), password):
             session['logged_in'] = True
             session['username'] = username
+            session['role'] = admin.get('role', 'admin')
             return redirect(url_for('dashboard'))
         flash('Invalid credentials', 'error')
     return render_template('login.html')
@@ -124,6 +186,54 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+
+# ============================================================
+# Discord webhook notifications
+# ============================================================
+
+def _get_discord_config():
+    if os.path.exists(DISCORD_CONFIG_FILE):
+        try:
+            with open(DISCORD_CONFIG_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_discord_config(cfg):
+    with open(DISCORD_CONFIG_FILE, 'w') as f:
+        json.dump(cfg, f, indent=2)
+
+
+def _discord_notify(message, color=0x3fb950, event='info'):
+    """Fire-and-forget Discord webhook notification in a background thread.
+
+    color: green=0x3fb950  red=0xf85149  yellow=0xd29922  blue=0x58a6ff
+    event: start, stop, join, leave, backup, mod_install, info
+    """
+    cfg = _get_discord_config()
+    webhook_url = cfg.get('webhook_url', '').strip()
+    if not webhook_url:
+        return
+    if not cfg.get(f'notify_{event}', True):
+        return
+
+    def _send():
+        try:
+            requests.post(webhook_url, json={
+                'embeds': [{
+                    'description': message,
+                    'color': color,
+                    'footer': {'text': 'Terraria Server'},
+                    'timestamp': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z'),
+                }]
+            }, timeout=5)
+        except Exception:
+            pass
+
+    threading.Thread(target=_send, daemon=True, name='discord-notify').start()
 
 
 # ============================================================
@@ -333,6 +443,48 @@ def get_players():
 
 
 # ============================================================
+# Live console (journalctl poller)
+# ============================================================
+
+def _check_player_event(line):
+    """Detect player join/leave in a log line and fire Discord notification."""
+    lower = line.lower()
+    if 'has joined' in lower:
+        name = line.split('has joined')[0].strip().split()[-1] if line.strip() else 'Someone'
+        _discord_notify(f'**{name}** joined the server', color=0x3fb950, event='join')
+    elif 'has left' in lower or 'has disconnected' in lower:
+        key = 'has left' if 'has left' in lower else 'has disconnected'
+        name = line.split(key)[0].strip().split()[-1] if line.strip() else 'Someone'
+        _discord_notify(f'**{name}** left the server', color=0xd29922, event='leave')
+
+
+def _start_console_poller():
+    """Daemon thread: tail journalctl -f and fill _console_buffer."""
+    def _run():
+        try:
+            proc = subprocess.Popen(
+                ['journalctl', '-u', SERVICE_NAME, '-f', '--no-pager',
+                 '--output=cat', '-n', '100'],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+            )
+            for raw_line in proc.stdout:
+                line = _ANSI_ESCAPE.sub(
+                    '', raw_line.decode('utf-8', errors='replace').rstrip()
+                )
+                if not line:
+                    continue
+                with _console_lock:
+                    _console_buffer.append(line)
+                    if len(_console_buffer) > MAX_CONSOLE_LINES:
+                        del _console_buffer[0]
+                _check_player_event(line)
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True, name='console-poller').start()
+
+
+# ============================================================
 # Routes — Dashboard
 # ============================================================
 
@@ -363,6 +515,12 @@ def server_control(action):
         )
         if result.returncode == 0:
             flash(f'Server {action}ed', 'success')
+            if action == 'start':
+                _discord_notify('Server started :white_check_mark:', color=0x3fb950, event='start')
+            elif action == 'stop':
+                _discord_notify('Server stopped :octagonal_sign:', color=0xf85149, event='stop')
+            elif action == 'restart':
+                _discord_notify('Server restarted :arrows_counterclockwise:', color=0xd29922, event='stop')
         else:
             flash(f'Error: {result.stderr or result.stdout}', 'error')
     except Exception as e:
@@ -650,6 +808,7 @@ def config():
         tshock_config=tshock_config,
         version=version_info,
         server_type=server_type,
+        discord_config=_get_discord_config(),
     )
 
 
@@ -1271,6 +1430,10 @@ def mods_workshop():
     _save_enabled_mods(enabled)
     _record_mod_installed(mod_name, dest, workshop_id)
     flash(f'Mod "{mod_name}" installed and enabled!', 'success')
+    _discord_notify(
+        f'Mod installed: **{mod_name}** (Workshop {workshop_id})',
+        color=0x58a6ff, event='mod_install'
+    )
 
     for ok, msg in _ensure_mod_dependencies(dest, steamcmd):
         flash(msg, 'success' if ok else 'error')
@@ -1545,6 +1708,7 @@ def backups_create():
         flash(f'Backup failed: {err}', 'error')
     else:
         flash(f'Backup created: {name}', 'success')
+        _discord_notify(f'World backup created: `{name}`', color=0x58a6ff, event='backup')
     return redirect(url_for('backups'))
 
 
@@ -1884,6 +2048,194 @@ def _start_auto_backup_scheduler():
 
 
 _start_auto_backup_scheduler()
+_bootstrap_admins()
+_start_console_poller()
+
+
+# ============================================================
+# Routes — Live console
+# ============================================================
+
+@app.route('/console')
+@login_required
+def console():
+    return render_template('console.html', server_type=get_server_type())
+
+
+@app.route('/api/console/lines')
+@login_required
+def api_console_lines():
+    since = int(request.args.get('since', 0))
+    with _console_lock:
+        buf = list(_console_buffer)
+    # clamp: client cursor might be ahead of a cleared buffer
+    since = max(0, min(since, len(buf)))
+    return jsonify({'lines': buf[since:], 'total': len(buf)})
+
+
+@app.route('/api/console/send', methods=['POST'])
+@login_required
+def api_console_send():
+    data = request.get_json(silent=True) or {}
+    cmd = data.get('cmd', '').strip()
+    if not cmd:
+        return jsonify({'ok': False, 'error': 'Empty command'})
+    screen_send(cmd)
+    return jsonify({'ok': True})
+
+
+# ============================================================
+# Routes — Discord config
+# ============================================================
+
+@app.route('/discord/config', methods=['POST'])
+@login_required
+def discord_config_save():
+    cfg = {
+        'webhook_url':      request.form.get('webhook_url', '').strip(),
+        'notify_start':     'notify_start'       in request.form,
+        'notify_stop':      'notify_stop'        in request.form,
+        'notify_join':      'notify_join'        in request.form,
+        'notify_leave':     'notify_leave'       in request.form,
+        'notify_backup':    'notify_backup'      in request.form,
+        'notify_mod_install': 'notify_mod_install' in request.form,
+    }
+    _save_discord_config(cfg)
+    flash('Discord settings saved.', 'success')
+    return redirect(url_for('config'))
+
+
+@app.route('/discord/test', methods=['POST'])
+@login_required
+def discord_test():
+    cfg = _get_discord_config()
+    if not cfg.get('webhook_url', '').strip():
+        flash('No webhook URL configured.', 'error')
+        return redirect(url_for('config'))
+    _discord_notify(
+        ':bell: Test notification from **Terraria Admin Panel**',
+        color=0x58a6ff, event='info'
+    )
+    flash('Test notification sent (if webhook URL is valid).', 'success')
+    return redirect(url_for('config'))
+
+
+# ============================================================
+# Routes — Admin management
+# ============================================================
+
+@app.route('/admins')
+@require_role('superadmin')
+def admins_page():
+    admins_data = _get_admins()
+    admin_list = [
+        {
+            'username': u,
+            'role': d.get('role', 'admin'),
+            'created_at': d.get('created_at', ''),
+        }
+        for u, d in admins_data.items()
+    ]
+    return render_template(
+        'admins.html',
+        admins=admin_list,
+        roles=list(ROLE_LEVELS.keys()),
+        current_user=session.get('username'),
+    )
+
+
+@app.route('/admins/add', methods=['POST'])
+@require_role('superadmin')
+def admins_add():
+    username = request.form.get('username', '').strip()
+    password = request.form.get('password', '').strip()
+    role = request.form.get('role', 'admin')
+    if not username or not password:
+        flash('Username and password are required', 'error')
+        return redirect(url_for('admins_page'))
+    if role not in ROLE_LEVELS:
+        flash('Invalid role', 'error')
+        return redirect(url_for('admins_page'))
+    admins_data = _get_admins()
+    if username in admins_data:
+        flash(f'User "{username}" already exists', 'error')
+        return redirect(url_for('admins_page'))
+    admins_data[username] = {
+        'password_hash': generate_password_hash(password),
+        'role': role,
+        'created_at': datetime.now().isoformat(timespec='seconds'),
+    }
+    _save_admins(admins_data)
+    flash(f'Admin "{username}" created with role "{role}".', 'success')
+    return redirect(url_for('admins_page'))
+
+
+@app.route('/admins/delete', methods=['POST'])
+@require_role('superadmin')
+def admins_delete():
+    username = request.form.get('username', '').strip()
+    if username == session.get('username'):
+        flash('Cannot delete your own account', 'error')
+        return redirect(url_for('admins_page'))
+    admins_data = _get_admins()
+    superadmins = [u for u, d in admins_data.items() if d.get('role') == 'superadmin']
+    if username in superadmins and len(superadmins) <= 1:
+        flash('Cannot delete the last superadmin', 'error')
+        return redirect(url_for('admins_page'))
+    if username in admins_data:
+        del admins_data[username]
+        _save_admins(admins_data)
+        flash(f'Admin "{username}" deleted.', 'success')
+    else:
+        flash(f'User "{username}" not found', 'error')
+    return redirect(url_for('admins_page'))
+
+
+@app.route('/admins/role', methods=['POST'])
+@require_role('superadmin')
+def admins_role():
+    username = request.form.get('username', '').strip()
+    new_role = request.form.get('role', '').strip()
+    if new_role not in ROLE_LEVELS:
+        flash('Invalid role', 'error')
+        return redirect(url_for('admins_page'))
+    admins_data = _get_admins()
+    if username not in admins_data:
+        flash(f'User "{username}" not found', 'error')
+        return redirect(url_for('admins_page'))
+    if admins_data[username].get('role') == 'superadmin' and new_role != 'superadmin':
+        superadmins = [u for u, d in admins_data.items() if d.get('role') == 'superadmin']
+        if len(superadmins) <= 1:
+            flash('Cannot demote the last superadmin', 'error')
+            return redirect(url_for('admins_page'))
+    admins_data[username]['role'] = new_role
+    _save_admins(admins_data)
+    flash(f'Role for "{username}" changed to "{new_role}".', 'success')
+    return redirect(url_for('admins_page'))
+
+
+@app.route('/admins/password', methods=['POST'])
+@login_required
+def admins_password():
+    """Any logged-in user can change their own password; superadmins can change any."""
+    target = request.form.get('username', '').strip()
+    new_password = request.form.get('password', '').strip()
+    current_user = session.get('username')
+    current_role = session.get('role', 'viewer')
+    if not new_password or len(new_password) < 6:
+        flash('Password must be at least 6 characters', 'error')
+        return redirect(url_for('admins_page'))
+    if target != current_user and ROLE_LEVELS.get(current_role, 0) < ROLE_LEVELS['superadmin']:
+        flash('Insufficient permissions to change another user\'s password', 'error')
+        return redirect(url_for('admins_page'))
+    admins_data = _get_admins()
+    if target not in admins_data:
+        flash(f'User "{target}" not found', 'error')
+        return redirect(url_for('admins_page'))
+    admins_data[target]['password_hash'] = generate_password_hash(new_password)
+    _save_admins(admins_data)
+    flash(f'Password for "{target}" updated.', 'success')
+    return redirect(url_for('admins_page'))
 
 
 # ============================================================
