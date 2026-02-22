@@ -50,21 +50,43 @@ def api_logs():
     cfg = current_app.terraria_config
     lines = min(int(request.args.get('lines', 300)), 1000)
     level = request.args.get('level', 'all')
+
+    log_lines = _read_logs(cfg, lines)
+
+    if level == 'error':
+        log_lines = [l for l in log_lines if any(
+            kw in l.lower() for kw in ('error', 'exception', 'fail', 'fatal'))]
+    elif level == 'warn':
+        log_lines = [l for l in log_lines if any(
+            kw in l.lower() for kw in ('warn', 'error', 'exception', 'fail', 'fatal'))]
+    return jsonify({'lines': log_lines})
+
+
+def _read_logs(cfg, lines):
+    """Try log file → journalctl → console buffer, in that order."""
+    # 1. Log file (works in Docker if volume-mounted)
+    log_file = getattr(cfg, 'LOG_FILE', None)
+    if log_file:
+        try:
+            with open(log_file) as f:
+                return f.readlines()[-lines:]
+        except Exception:
+            pass
+
+    # 2. journalctl (works on bare-metal with systemd)
     try:
         result = subprocess.run(
             ['journalctl', '-u', cfg.SERVICE_NAME, f'-n{lines}', '--no-pager', '--output=short-iso'],
             capture_output=True, text=True, timeout=10
         )
-        log_lines = result.stdout.splitlines()
-        if level == 'error':
-            log_lines = [l for l in log_lines if any(
-                kw in l.lower() for kw in ('error', 'exception', 'fail', 'fatal'))]
-        elif level == 'warn':
-            log_lines = [l for l in log_lines if any(
-                kw in l.lower() for kw in ('warn', 'error', 'exception', 'fail', 'fatal'))]
-        return jsonify({'lines': log_lines})
-    except Exception as exc:
-        return jsonify({'lines': [], 'error': str(exc)})
+        if result.returncode == 0:
+            return result.stdout.splitlines()
+    except Exception:
+        pass
+
+    # 3. In-memory console buffer (always available in Docker)
+    from ..extensions import console_buffer
+    return list(console_buffer)[-lines:]
 
 
 @bp.route('/api/metrics')
