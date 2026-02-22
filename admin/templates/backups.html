@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Backups - Terraria Admin{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h2>World Backups</h2>
+    <form method="POST" action="{{ url_for('backups_create') }}" class="inline-form">
+        <button type="submit" class="btn btn-success">Create Backup Now</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-title">Backup Settings</div>
+    <div class="grid grid-3">
+        <div class="stat">
+            <div class="stat-value">{{ auto_interval }}h</div>
+            <div class="stat-label">Auto-backup interval</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">{{ keep_count }}</div>
+            <div class="stat-label">Auto-backups kept</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">{{ backups|length }}</div>
+            <div class="stat-label">Total backups</div>
+        </div>
+    </div>
+    <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 10px;">
+        Configure via <code>.env</code>: <code>AUTO_BACKUP_INTERVAL_HOURS</code>, <code>BACKUP_KEEP_COUNT</code>
+    </p>
+</div>
+
+{% if not backups %}
+<div class="card">
+    <p style="color: var(--text-muted);">No backups yet. Click "Create Backup Now" to make the first one.</p>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-title">All Backups</div>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Backup</th>
+                <th>Type</th>
+                <th>Files</th>
+                <th>Size</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for b in backups %}
+            <tr>
+                <td><code style="font-size: 0.8rem;">{{ b.name }}</code></td>
+                <td>
+                    {% if b.label == 'auto' %}
+                        <span class="badge badge-success">auto</span>
+                    {% else %}
+                        <span class="badge badge-warning">manual</span>
+                    {% endif %}
+                </td>
+                <td style="color: var(--text-muted); font-size: 0.85rem;">
+                    {{ b.files | join(', ') }}
+                </td>
+                <td style="color: var(--text-muted);">{{ b.size_mb }} MB</td>
+                <td style="color: var(--text-muted);">{{ b.timestamp }}</td>
+                <td>
+                    <div class="btn-group">
+                        <form method="POST" action="{{ url_for('backups_restore') }}" class="inline-form"
+                              onsubmit="return confirm('Restore from {{ b.name }}? Server will restart. Continue?');">
+                            <input type="hidden" name="backup_name" value="{{ b.name }}">
+                            <button type="submit" class="btn btn-warning btn-sm">Restore</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('backups_delete') }}" class="inline-form"
+                              onsubmit="return confirm('Delete backup {{ b.name }}?');">
+                            <input type="hidden" name="backup_name" value="{{ b.name }}">
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

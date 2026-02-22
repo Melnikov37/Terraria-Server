@@ -71,39 +71,40 @@
     {% endif %}
 </div>
 
-{% if status.online and players %}
-<div class="card">
-    <div class="card-title">Online Players</div>
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Team</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for player in players %}
-            <tr>
-                <td>{{ player.nickname }}</td>
-                <td>{{ player.team }}</td>
-                <td>
-                    <form method="POST" action="{{ url_for('kick_player') }}" class="inline-form">
-                        <input type="hidden" name="player" value="{{ player.nickname }}">
-                        <button type="submit" class="btn btn-danger btn-sm">Kick</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<!-- Resource metrics -->
+<div class="card" id="metricsCard" style="display:none;">
+    <div class="card-title">System Resources</div>
+    <div class="grid grid-4" id="metricsGrid"></div>
 </div>
-{% elif status.online %}
-<div class="card">
-    <div class="card-title">Online Players</div>
-    <p style="color: var(--text-muted);">No players online</p>
+
+<!-- Online players (auto-refreshed) -->
+<div class="card" id="playersCard">
+    <div class="card-title">Online Players <span id="playerCount" style="color:var(--text-muted);"></span></div>
+    <div id="playersList">
+        {% if status.online and players %}
+        <table class="table">
+            <thead><tr><th>Name</th><th>Actions</th></tr></thead>
+            <tbody>
+                {% for player in players %}
+                <tr>
+                    <td>{{ player.nickname }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('kick_player') }}" class="inline-form">
+                            <input type="hidden" name="player" value="{{ player.nickname }}">
+                            <button type="submit" class="btn btn-danger btn-sm">Kick</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% elif status.online %}
+        <p style="color: var(--text-muted);">No players online</p>
+        {% else %}
+        <p style="color: var(--text-muted);">Server is offline</p>
+        {% endif %}
+    </div>
 </div>
-{% endif %}
 
 <div class="card">
     <div class="card-title">Quick Actions</div>
@@ -115,28 +116,73 @@
         {% if status.server_type == 'tmodloader' %}
         <a href="{{ url_for('mods') }}" class="btn btn-primary">Manage Mods</a>
         {% endif %}
-        <a href="{{ url_for('config') }}" class="btn btn-primary">Configuration</a>
+        <a href="{{ url_for('backups') }}" class="btn btn-primary">Backups</a>
+        <a href="{{ url_for('logs') }}" class="btn btn-primary">Logs</a>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// Auto-refresh status every 15 seconds
-setInterval(() => {
+function updatePlayers() {
+    fetch('/api/players')
+        .then(r => r.json())
+        .then(players => {
+            const count = document.getElementById('playerCount');
+            count.textContent = `(${players.length})`;
+            const list = document.getElementById('playersList');
+            if (!players.length) {
+                list.innerHTML = '<p style="color:var(--text-muted)">No players online</p>';
+                return;
+            }
+            let rows = players.map(p =>
+                `<tr><td>${p.nickname || p.name || ''}</td><td>
+                 <form method="POST" action="/players/kick" class="inline-form">
+                   <input type="hidden" name="player" value="${p.nickname || p.name || ''}">
+                   <button class="btn btn-danger btn-sm">Kick</button>
+                 </form></td></tr>`
+            ).join('');
+            list.innerHTML = `<table class="table"><thead><tr><th>Name</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+        })
+        .catch(() => {});
+}
+
+function updateMetrics() {
+    fetch('/api/metrics')
+        .then(r => r.json())
+        .then(m => {
+            if (m.error) return;
+            const card = document.getElementById('metricsCard');
+            card.style.display = '';
+            const grid = document.getElementById('metricsGrid');
+            const items = [
+                { v: m.cpu_percent + '%', l: 'CPU' },
+                { v: `${m.ram_used_gb}/${m.ram_total_gb} GB`, l: `RAM ${m.ram_percent}%` },
+                { v: m.disk_used_gb != null ? `${m.disk_used_gb}/${m.disk_total_gb} GB` : '—', l: 'Disk' },
+                { v: m.server_ram_mb != null ? m.server_ram_mb + ' MB' : '—', l: 'Server RAM' },
+            ];
+            grid.innerHTML = items.map(i =>
+                `<div class="stat"><div class="stat-value" style="font-size:1.4rem">${i.v}</div><div class="stat-label">${i.l}</div></div>`
+            ).join('');
+        })
+        .catch(() => {});
+}
+
+function updateStatus() {
     fetch('/api/status')
         .then(r => r.json())
         .then(data => {
             const dot = document.querySelector('.status-dot');
-            if (data.online) {
-                dot.classList.remove('offline');
-                dot.classList.add('online');
-            } else {
-                dot.classList.remove('online');
-                dot.classList.add('offline');
-            }
+            dot.classList.toggle('online', !!data.online);
+            dot.classList.toggle('offline', !data.online);
         })
         .catch(() => {});
-}, 15000);
+}
+
+updateMetrics();
+updatePlayers();
+setInterval(updateStatus, 15000);
+setInterval(updatePlayers, 10000);
+setInterval(updateMetrics, 8000);
 </script>
 {% endblock %}

@@ -11,6 +11,35 @@
     {% endif %}
 </div>
 
+<!-- Switch existing world -->
+{% if worlds %}
+<div class="card">
+    <div class="card-title">Switch World</div>
+    <p style="color: var(--text-muted); margin-bottom: 15px; font-size: 0.9rem;">
+        Switch to an existing world file. Server will restart automatically.
+        Current world: <strong>{{ status.world }}</strong>
+    </p>
+    <form method="POST" action="{{ url_for('world_switch') }}">
+        <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;">
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <label>Select World</label>
+                <select name="world_name">
+                    {% for w in worlds %}
+                    <option value="{{ w.name }}" {{ 'selected' if w.name == status.world }}>
+                        {{ w.name }} ({{ w.size_mb }} MB, {{ w.modified }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary" style="height: 42px;"
+                    onclick="return confirm('Switch world and restart server?');">
+                Switch & Restart
+            </button>
+        </div>
+    </form>
+</div>
+{% endif %}
+
 <!-- New World Creation - always available -->
 <div class="card">
     <div class="card-title">Create New World</div>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Mods</title>
+    <style>
+        :root {
+            --bg: #0d1117; --bg-card: #161b22; --bg-input: #21262d;
+            --border: #30363d; --text: #c9d1d9; --text-muted: #8b949e;
+            --accent: #58a6ff; --success: #3fb950;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+               background: var(--bg); color: var(--text); padding: 30px 20px; max-width: 800px; margin: 0 auto; }
+        h1 { color: var(--accent); margin-bottom: 8px; }
+        .subtitle { color: var(--text-muted); margin-bottom: 30px; font-size: 0.95rem; }
+        .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .card-title { color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 15px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { color: var(--text-muted); font-size: 0.85rem; font-weight: 500; }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        code { background: var(--bg-input); padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; }
+        .btn { display: inline-block; padding: 8px 16px; border-radius: 6px; background: var(--accent);
+               color: #fff; cursor: pointer; font-size: 0.9rem; border: none; }
+        .empty { color: var(--text-muted); padding: 20px 0; }
+        .step { display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start; }
+        .step-num { background: var(--accent); color: #fff; border-radius: 50%; width: 24px; height: 24px;
+                    display: flex; align-items: center; justify-content: center; font-size: 0.8rem; flex-shrink: 0; }
+    </style>
+</head>
+<body>
+    <h1>Server Mods</h1>
+    <p class="subtitle">Install these mods in your tModLoader client to join the server.</p>
+
+    {% if not mods %}
+    <div class="card">
+        <p class="empty">No mods currently enabled on this server.</p>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-title">Required Mods ({{ mods|length }})</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Mod</th>
+                    <th>Version</th>
+                    <th>Workshop</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for mod in mods %}
+                <tr>
+                    <td><strong>{{ mod.name }}</strong></td>
+                    <td><code>{{ mod.version }}</code></td>
+                    <td>
+                        {% if mod.workshop_id %}
+                            <a href="https://steamcommunity.com/sharedfiles/filedetails/?id={{ mod.workshop_id }}"
+                               target="_blank" rel="noopener">
+                                {{ mod.workshop_id }} ↗
+                            </a>
+                        {% else %}
+                            <span style="color: var(--text-muted);">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% set ids = mods | selectattr('workshop_id') | map(attribute='workshop_id') | list %}
+        {% if ids %}
+        <div style="margin-top: 16px;">
+            <button class="btn" onclick="copyIds()">Copy all Workshop IDs</button>
+            <span id="copyMsg" style="color: var(--success); margin-left: 10px; display: none;">Copied!</span>
+            <input type="hidden" id="idsText" value="{{ ids | join(', ') }}">
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-title">How to Install Mods</div>
+        <div class="step">
+            <div class="step-num">1</div>
+            <div>Install <strong>tModLoader</strong> from Steam (free DLC for Terraria)</div>
+        </div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <div>Open tModLoader → <strong>Workshop</strong> → <strong>Mod Browser</strong></div>
+        </div>
+        <div class="step">
+            <div class="step-num">3</div>
+            <div>Search for each mod above by name → click <strong>Subscribe</strong></div>
+        </div>
+        <div class="step">
+            <div class="step-num">4</div>
+            <div>Go to <strong>Mods</strong> → enable all downloaded mods → click <strong>Reload Mods</strong></div>
+        </div>
+        <div class="step">
+            <div class="step-num">5</div>
+            <div>Connect: <strong>Multiplayer</strong> → <strong>Join via IP</strong></div>
+        </div>
+    </div>
+
+<script>
+function copyIds() {
+    const text = document.getElementById('idsText').value;
+    navigator.clipboard.writeText(text).then(() => {
+        const msg = document.getElementById('copyMsg');
+        msg.style.display = 'inline';
+        setTimeout(() => msg.style.display = 'none', 2000);
+    });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Logs - Terraria Admin{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h2>Server Logs</h2>
+    <div class="btn-group">
+        <select id="levelFilter" style="width: auto; padding: 8px 12px;">
+            <option value="all">All messages</option>
+            <option value="warn">Warnings & Errors</option>
+            <option value="error">Errors only</option>
+        </select>
+        <select id="lineCount" style="width: auto; padding: 8px 12px;">
+            <option value="100">Last 100 lines</option>
+            <option value="300" selected>Last 300 lines</option>
+            <option value="500">Last 500 lines</option>
+            <option value="1000">Last 1000 lines</option>
+        </select>
+        <button class="btn btn-primary" onclick="loadLogs()">Refresh</button>
+        <button class="btn btn-success" id="followBtn" onclick="toggleFollow()">▶ Follow</button>
+    </div>
+</div>
+
+<div class="card" style="padding: 0;">
+    <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: var(--text-muted); font-size: 0.85rem;" id="logMeta">Loading…</span>
+        <label style="display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 0.85rem; cursor: pointer;">
+            <input type="checkbox" id="wrapToggle" onchange="toggleWrap()"> Wrap lines
+        </label>
+    </div>
+    <pre id="logOutput" style="
+        background: var(--bg);
+        color: var(--text);
+        padding: 16px;
+        margin: 0;
+        overflow-x: auto;
+        overflow-y: auto;
+        max-height: 70vh;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        white-space: pre;
+        border-radius: 0 0 8px 8px;
+    ">Loading logs…</pre>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let followInterval = null;
+let following = false;
+
+function colorize(line) {
+    if (/error|exception|fatal/i.test(line))
+        return `<span style="color: var(--danger)">${escHtml(line)}</span>`;
+    if (/warn/i.test(line))
+        return `<span style="color: var(--warning)">${escHtml(line)}</span>`;
+    if (/\[Info\]|success/i.test(line))
+        return `<span style="color: var(--success)">${escHtml(line)}</span>`;
+    return escHtml(line);
+}
+
+function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function loadLogs() {
+    const lines = document.getElementById('lineCount').value;
+    const level = document.getElementById('levelFilter').value;
+    fetch(`/api/logs?lines=${lines}&level=${level}`)
+        .then(r => r.json())
+        .then(data => {
+            const out = document.getElementById('logOutput');
+            if (data.error) {
+                out.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(data.error)}</span>`;
+                return;
+            }
+            out.innerHTML = data.lines.map(colorize).join('\n');
+            document.getElementById('logMeta').textContent =
+                `${data.lines.length} lines shown`;
+            if (following) out.scrollTop = out.scrollHeight;
+        })
+        .catch(() => {
+            document.getElementById('logOutput').textContent = 'Failed to fetch logs.';
+        });
+}
+
+function toggleFollow() {
+    following = !following;
+    const btn = document.getElementById('followBtn');
+    if (following) {
+        btn.textContent = '⏹ Stop';
+        btn.className = 'btn btn-danger';
+        followInterval = setInterval(loadLogs, 3000);
+    } else {
+        btn.textContent = '▶ Follow';
+        btn.className = 'btn btn-success';
+        clearInterval(followInterval);
+    }
+}
+
+function toggleWrap() {
+    const out = document.getElementById('logOutput');
+    out.style.whiteSpace = document.getElementById('wrapToggle').checked ? 'pre-wrap' : 'pre';
+}
+
+document.getElementById('levelFilter').addEventListener('change', loadLogs);
+document.getElementById('lineCount').addEventListener('change', loadLogs);
+
+loadLogs();
+</script>
+{% endblock %}

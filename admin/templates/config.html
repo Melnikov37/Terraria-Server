@@ -172,12 +172,26 @@
             </td>
         </tr>
     </table>
-    <div style="margin-top: 15px;">
-        <form method="POST" action="{{ url_for('update_server') }}" class="inline-form" onsubmit="return confirm('This will update the server and restart. Continue?');">
-            <button type="submit" class="btn {{ 'btn-warning' if version.update_available else 'btn-secondary' }}">
+    <div style="margin-top: 15px;" class="btn-group">
+        {% if version.server_type == 'tmodloader' %}
+        <form method="POST" action="{{ url_for('update_tmodloader') }}" class="inline-form"
+              onsubmit="return confirm('Update tModLoader? Server will restart. Continue?');">
+            <button type="submit" class="btn {{ 'btn-warning' if version.update_available else 'btn-primary' }}">
+                {{ 'Update tModLoader →' + version.latest if version.update_available else 'Check & Update tModLoader' }}
+            </button>
+        </form>
+        {% else %}
+        <form method="POST" action="{{ url_for('update_server') }}" class="inline-form"
+              onsubmit="return confirm('This will update the server and restart. Continue?');">
+            <button type="submit" class="btn {{ 'btn-warning' if version.update_available else 'btn-primary' }}">
                 {{ 'Update Now' if version.update_available else 'Force Update' }}
             </button>
         </form>
+        {% endif %}
+        {% if version.server_type == 'tmodloader' %}
+        <a href="https://github.com/tModLoader/tModLoader/releases/latest" target="_blank" rel="noopener"
+           class="btn btn-primary">Changelog ↗</a>
+        {% endif %}
     </div>
     <p style="margin-top: 15px; color: var(--text-muted); font-size: 0.9rem;">
         Switch server type via SSH:

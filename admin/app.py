@@ -79,7 +79,11 @@ KNOWN_WORKSHOP_IDS = {
 }
 CONFIG_FILE    = os.path.join(TERRARIA_DIR, 'serverconfig.txt')
 TSHOCK_CONFIG  = os.path.join(TERRARIA_DIR, 'tshock', 'config.json')
+WORLDS_DIR     = os.path.join(TERRARIA_DIR, 'worlds')
+BACKUPS_DIR    = os.path.join(TERRARIA_DIR, 'backups')
 SERVICE_NAME   = 'terraria'
+BACKUP_KEEP_COUNT          = int(os.environ.get('BACKUP_KEEP_COUNT', '24'))
+AUTO_BACKUP_INTERVAL_HOURS = int(os.environ.get('AUTO_BACKUP_INTERVAL_HOURS', '1'))
 
 
 def get_server_type():
@@ -453,7 +457,8 @@ def unban_player():
 @login_required
 def world():
     status = get_server_status()
-    return render_template('world.html', status=status)
+    worlds = _list_worlds()
+    return render_template('world.html', status=status, worlds=worlds)
 
 
 @app.route('/world/time', methods=['POST'])
@@ -1473,6 +1478,347 @@ def api_mods_debug():
 
 
 # ============================================================
+# Routes — Backups
+# ============================================================
+
+def _create_backup(label='manual'):
+    """Copy all .wld files to backups/<label>_<timestamp>/. Returns (name, error)."""
+    if not os.path.isdir(WORLDS_DIR):
+        return None, 'Worlds directory not found'
+    wld_files = [f for f in os.listdir(WORLDS_DIR) if f.endswith('.wld')]
+    if not wld_files:
+        return None, 'No .wld files found in worlds directory'
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    backup_name = f'{label}_{ts}'
+    backup_path = os.path.join(BACKUPS_DIR, backup_name)
+    os.makedirs(backup_path, exist_ok=True)
+    for fname in wld_files:
+        shutil.copy2(os.path.join(WORLDS_DIR, fname), os.path.join(backup_path, fname))
+    return backup_name, None
+
+
+def _list_backups():
+    """Return list of backup dicts sorted newest-first."""
+    if not os.path.isdir(BACKUPS_DIR):
+        return []
+    backups = []
+    for name in os.listdir(BACKUPS_DIR):
+        path = os.path.join(BACKUPS_DIR, name)
+        if not os.path.isdir(path):
+            continue
+        files = [f for f in os.listdir(path) if f.endswith('.wld')]
+        if not files:
+            continue
+        total_size = sum(os.path.getsize(os.path.join(path, f)) for f in files)
+        mtime = os.path.getmtime(path)
+        backups.append({
+            'name': name,
+            'label': 'auto' if name.startswith('auto_') else 'manual',
+            'files': files,
+            'size_mb': round(total_size / (1024 * 1024), 1),
+            'timestamp': datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S'),
+            'mtime': mtime,
+        })
+    return sorted(backups, key=lambda b: b['mtime'], reverse=True)
+
+
+def _prune_auto_backups():
+    """Delete oldest auto-backups beyond BACKUP_KEEP_COUNT."""
+    auto = [b for b in _list_backups() if b['label'] == 'auto']
+    for b in auto[BACKUP_KEEP_COUNT:]:
+        shutil.rmtree(os.path.join(BACKUPS_DIR, b['name']), ignore_errors=True)
+
+
+@app.route('/backups')
+@login_required
+def backups():
+    return render_template('backups.html', backups=_list_backups(),
+                           auto_interval=AUTO_BACKUP_INTERVAL_HOURS,
+                           keep_count=BACKUP_KEEP_COUNT)
+
+
+@app.route('/backups/create', methods=['POST'])
+@login_required
+def backups_create():
+    name, err = _create_backup('manual')
+    if err:
+        flash(f'Backup failed: {err}', 'error')
+    else:
+        flash(f'Backup created: {name}', 'success')
+    return redirect(url_for('backups'))
+
+
+@app.route('/backups/restore', methods=['POST'])
+@login_required
+def backups_restore():
+    backup_name = request.form.get('backup_name', '').strip()
+    if not backup_name or os.sep in backup_name or '..' in backup_name:
+        flash('Invalid backup name', 'error')
+        return redirect(url_for('backups'))
+    backup_path = os.path.join(BACKUPS_DIR, backup_name)
+    if not os.path.isdir(backup_path):
+        flash('Backup not found', 'error')
+        return redirect(url_for('backups'))
+    try:
+        subprocess.run(['/usr/bin/sudo', '/usr/bin/systemctl', 'stop', 'terraria.service'],
+                       capture_output=True, timeout=30)
+        time.sleep(3)
+        os.makedirs(WORLDS_DIR, exist_ok=True)
+        for fname in os.listdir(backup_path):
+            if fname.endswith('.wld'):
+                shutil.copy2(os.path.join(backup_path, fname), os.path.join(WORLDS_DIR, fname))
+        subprocess.run(['/usr/bin/sudo', '/usr/bin/systemctl', 'start', 'terraria.service'],
+                       capture_output=True, timeout=30)
+        flash(f'Restored from "{backup_name}". Server restarting.', 'success')
+    except Exception as exc:
+        flash(f'Restore failed: {exc}', 'error')
+    return redirect(url_for('backups'))
+
+
+@app.route('/backups/delete', methods=['POST'])
+@login_required
+def backups_delete():
+    backup_name = request.form.get('backup_name', '').strip()
+    if not backup_name or os.sep in backup_name or '..' in backup_name:
+        flash('Invalid backup name', 'error')
+        return redirect(url_for('backups'))
+    backup_path = os.path.join(BACKUPS_DIR, backup_name)
+    if os.path.isdir(backup_path):
+        shutil.rmtree(backup_path)
+        flash(f'Backup "{backup_name}" deleted.', 'success')
+    else:
+        flash('Backup not found', 'error')
+    return redirect(url_for('backups'))
+
+
+# ============================================================
+# Routes — Logs
+# ============================================================
+
+@app.route('/logs')
+@login_required
+def logs():
+    return render_template('logs.html')
+
+
+@app.route('/api/logs')
+@login_required
+def api_logs():
+    lines = min(int(request.args.get('lines', 300)), 1000)
+    level = request.args.get('level', 'all')
+    try:
+        result = subprocess.run(
+            ['journalctl', '-u', 'terraria', f'-n{lines}', '--no-pager', '--output=short-iso'],
+            capture_output=True, text=True, timeout=10
+        )
+        log_lines = result.stdout.splitlines()
+        if level == 'error':
+            log_lines = [l for l in log_lines if any(
+                kw in l.lower() for kw in ('error', 'exception', 'fail', 'fatal'))]
+        elif level == 'warn':
+            log_lines = [l for l in log_lines if any(
+                kw in l.lower() for kw in ('warn', 'error', 'exception', 'fail', 'fatal'))]
+        return jsonify({'lines': log_lines})
+    except Exception as exc:
+        return jsonify({'lines': [], 'error': str(exc)})
+
+
+# ============================================================
+# Routes — Public mod list (no login required)
+# ============================================================
+
+@app.route('/mods/public')
+def mods_public():
+    enabled_mods = [m for m in _list_mods() if m['enabled']]
+    server_type = get_server_type()
+    return render_template('mods_public.html', mods=enabled_mods, server_type=server_type)
+
+
+# ============================================================
+# Routes — Resource metrics
+# ============================================================
+
+@app.route('/api/metrics')
+@login_required
+def api_metrics():
+    try:
+        import psutil
+        cpu = psutil.cpu_percent(interval=0.2)
+        mem = psutil.virtual_memory()
+        try:
+            disk = psutil.disk_usage(TERRARIA_DIR)
+            disk_used = round(disk.used / (1024 ** 3), 2)
+            disk_total = round(disk.total / (1024 ** 3), 2)
+            disk_pct = round(disk.percent, 1)
+        except Exception:
+            disk_used = disk_total = disk_pct = None
+
+        server_cpu = server_ram_mb = None
+        for proc in psutil.process_iter(['pid', 'cmdline', 'cpu_percent', 'memory_info']):
+            try:
+                cmdline = ' '.join(proc.info['cmdline'] or [])
+                if 'tModLoader' in cmdline or 'TerrariaServer' in cmdline:
+                    server_cpu = proc.cpu_percent()
+                    server_ram_mb = round(proc.memory_info().rss / (1024 ** 2), 1)
+                    break
+            except Exception:
+                pass
+
+        return jsonify({
+            'cpu_percent': cpu,
+            'ram_used_gb': round(mem.used / (1024 ** 3), 2),
+            'ram_total_gb': round(mem.total / (1024 ** 3), 2),
+            'ram_percent': mem.percent,
+            'disk_used_gb': disk_used,
+            'disk_total_gb': disk_total,
+            'disk_percent': disk_pct,
+            'server_cpu': server_cpu,
+            'server_ram_mb': server_ram_mb,
+        })
+    except ImportError:
+        return jsonify({'error': 'psutil not installed'})
+    except Exception as exc:
+        return jsonify({'error': str(exc)})
+
+
+# ============================================================
+# Routes — World switching
+# ============================================================
+
+def _list_worlds():
+    """Return list of .wld files available in WORLDS_DIR."""
+    if not os.path.isdir(WORLDS_DIR):
+        return []
+    worlds = []
+    for fname in sorted(os.listdir(WORLDS_DIR)):
+        if not fname.endswith('.wld'):
+            continue
+        path = os.path.join(WORLDS_DIR, fname)
+        worlds.append({
+            'name': fname[:-4],
+            'filename': fname,
+            'size_mb': round(os.path.getsize(path) / (1024 * 1024), 1),
+            'modified': datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M'),
+        })
+    return worlds
+
+
+@app.route('/world/switch', methods=['POST'])
+@login_required
+def world_switch():
+    world_name = request.form.get('world_name', '').strip()
+    if not world_name or os.sep in world_name or '..' in world_name:
+        flash('Invalid world name', 'error')
+        return redirect(url_for('world'))
+
+    world_file = os.path.join(WORLDS_DIR, world_name + '.wld')
+    if not os.path.exists(world_file):
+        flash(f'World file not found: {world_name}.wld', 'error')
+        return redirect(url_for('world'))
+
+    # Read current config, update world path, write back
+    config = {}
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    k, v = line.split('=', 1)
+                    config[k.strip()] = v.strip()
+
+    config['world'] = world_file
+    config['worldname'] = world_name
+    config.pop('autocreate', None)
+
+    lines = ['# Terraria Server Configuration', f'# World switched: {datetime.now().isoformat()}', '']
+    for k, v in config.items():
+        lines.append(f'{k}={v}')
+
+    try:
+        with open(CONFIG_FILE, 'w') as f:
+            f.write('\n'.join(lines) + '\n')
+        subprocess.run(['/usr/bin/sudo', '/usr/bin/systemctl', 'restart', 'terraria.service'],
+                       capture_output=True, timeout=30)
+        flash(f'Switched to world "{world_name}". Server restarting…', 'success')
+    except Exception as exc:
+        flash(f'Error: {exc}', 'error')
+
+    return redirect(url_for('world'))
+
+
+# ============================================================
+# Routes — tModLoader update
+# ============================================================
+
+@app.route('/update/tmodloader', methods=['POST'])
+@login_required
+def update_tmodloader():
+    try:
+        resp = requests.get(
+            'https://api.github.com/repos/tModLoader/tModLoader/releases/latest', timeout=10)
+        if not resp.ok:
+            flash('Failed to fetch release info from GitHub', 'error')
+            return redirect(url_for('config'))
+
+        release = resp.json()
+        latest_tag = release.get('tag_name', '')
+        current = _stored_version()
+
+        if latest_tag == current:
+            flash(f'tModLoader is already up to date ({current})', 'success')
+            return redirect(url_for('config'))
+
+        assets = release.get('assets', [])
+        # Look for tModLoader.zip (not Sources, not -server-only variants)
+        zip_asset = next(
+            (a for a in assets
+             if a['name'] == 'tModLoader.zip' or
+             (a['name'].endswith('.zip') and 'source' not in a['name'].lower())),
+            None
+        )
+        if not zip_asset:
+            flash('Could not find tModLoader.zip in the latest GitHub release', 'error')
+            return redirect(url_for('config'))
+
+        # Backup current tML dir
+        tml_dir = os.path.join(TERRARIA_DIR, 'tModLoader')
+        backup_dir = os.path.join(TERRARIA_DIR, f'tModLoader_bak_{current}')
+        if os.path.isdir(tml_dir) and not os.path.isdir(backup_dir):
+            shutil.copytree(tml_dir, backup_dir)
+
+        # Stop server
+        subprocess.run(['/usr/bin/sudo', '/usr/bin/systemctl', 'stop', 'terraria.service'],
+                       capture_output=True, timeout=30)
+        time.sleep(2)
+
+        # Download and extract
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zip_path = os.path.join(tmpdir, 'tModLoader.zip')
+            r = requests.get(zip_asset['browser_download_url'], stream=True, timeout=300)
+            with open(zip_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=65536):
+                    f.write(chunk)
+            shutil.rmtree(tml_dir, ignore_errors=True)
+            os.makedirs(tml_dir, exist_ok=True)
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(tml_dir)
+
+        # Update stored version
+        with open(os.path.join(TERRARIA_DIR, '.server_version'), 'w') as f:
+            f.write(latest_tag)
+
+        subprocess.run(['/usr/bin/sudo', '/usr/bin/systemctl', 'start', 'terraria.service'],
+                       capture_output=True, timeout=30)
+        flash(f'tModLoader updated: {current} → {latest_tag}. Server restarting.', 'success')
+
+    except Exception as exc:
+        flash(f'Update failed: {exc}', 'error')
+
+    return redirect(url_for('config'))
+
+
+# ============================================================
 # Background mod updater
 # ============================================================
 
@@ -1518,6 +1864,26 @@ def _start_mod_update_scheduler():
 
 
 _start_mod_update_scheduler()
+
+
+def _start_auto_backup_scheduler():
+    if AUTO_BACKUP_INTERVAL_HOURS <= 0:
+        return
+
+    def _loop():
+        while True:
+            time.sleep(AUTO_BACKUP_INTERVAL_HOURS * 3600)
+            try:
+                _create_backup('auto')
+                _prune_auto_backups()
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_loop, daemon=True, name='auto-backup')
+    t.start()
+
+
+_start_auto_backup_scheduler()
 
 
 # ============================================================
