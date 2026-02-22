@@ -57,7 +57,7 @@ jobs:
     name: Build & push image
     needs: lint
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'   # only on merge, not PRs
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
     outputs:
       image_tag: ${{ steps.meta.outputs.version }}
