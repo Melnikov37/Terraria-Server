@@ -41,11 +41,7 @@ jobs:
           import sys, os
           # Avoid triggering bootstrap_admins / background threads
           os.environ.setdefault("SECRET_KEY", "ci-test-key")
-          os.environ.setdefault("ADMIN_FILE", "/tmp/admins.json")
-          os.environ.setdefault("SERVER_CONFIG", "/tmp/server.ini")
-          os.environ.setdefault("WORLD_DIR", "/tmp/worlds")
-          os.environ.setdefault("BACKUP_DIR", "/tmp/backups")
-          os.environ.setdefault("MOD_DIR", "/tmp/mods")
+          os.environ.setdefault("TERRARIA_DIR", "/tmp/terraria")
 
           from terraria_admin import create_app
           app = create_app()

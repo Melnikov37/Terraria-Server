@@ -16,6 +16,7 @@ def get_admins(cfg):
 
 
 def save_admins(admins, cfg):
+    os.makedirs(os.path.dirname(cfg.ADMINS_FILE), exist_ok=True)
     with open(cfg.ADMINS_FILE, 'w') as f:
         json.dump(admins, f, indent=2)
     try:
