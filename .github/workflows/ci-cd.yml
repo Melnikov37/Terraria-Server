@@ -112,6 +112,16 @@ jobs:
           target:   "~/terraria-admin"
           strip_components: 1   # removes the "admin/" prefix on the remote
 
+      - name: Debug secret lengths
+        run: |
+          echo "SECRET_KEY length: ${#SECRET_KEY}"
+          echo "ADMIN_TOKEN length: ${#ADMIN_TOKEN}"
+          echo "DOCKERHUB_USERNAME length: ${#DOCKERHUB_USERNAME}"
+        env:
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
       - name: Pull new image & recreate container
         uses: appleboy/ssh-action@v1.0.3
         with:
