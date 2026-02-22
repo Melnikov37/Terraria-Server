@@ -14,8 +14,7 @@ class Config:
     TERRARIA_DIR   = os.environ.get('TERRARIA_DIR', '/opt/terraria')
     REST_URL       = os.environ.get('REST_URL', 'http://127.0.0.1:7878')
     REST_TOKEN     = os.environ.get('REST_TOKEN', '')
-    ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
-    ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin')
+    ADMIN_TOKEN    = os.environ.get('ADMIN_TOKEN', '')
     SERVER_TYPE    = os.environ.get('SERVER_TYPE', 'tshock')
     SCREEN_SESSION = os.environ.get('SCREEN_SESSION', 'terraria')
     MODS_DIR       = os.environ.get(

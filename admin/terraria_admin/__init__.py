@@ -28,7 +28,6 @@ def create_app(config_class=Config):
     from .blueprints.backups    import bp as backups_bp
     from .blueprints.config_bp  import bp as config_bp
     from .blueprints.console    import bp as console_bp
-    from .blueprints.admins     import bp as admins_bp
     from .blueprints.api        import bp as api_bp
 
     app.register_blueprint(auth_bp)
@@ -39,14 +38,11 @@ def create_app(config_class=Config):
     app.register_blueprint(backups_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(console_bp)
-    app.register_blueprint(admins_bp)
     app.register_blueprint(api_bp)
 
     # Start background daemons only once (guard against werkzeug reloader double-start)
     if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        from .services.auth       import bootstrap_admins
         from .services.schedulers import start_all
-        bootstrap_admins(cfg)
         start_all(app)
 
     return app

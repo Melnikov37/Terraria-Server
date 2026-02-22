@@ -1,7 +1,6 @@
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
-from werkzeug.security import check_password_hash
+import secrets
 
-from ..services.auth import get_admins
+from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 
 bp = Blueprint('auth', __name__)
 
@@ -9,16 +8,12 @@ bp = Blueprint('auth', __name__)
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        cfg = __import__('flask').current_app.terraria_config
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '')
-        admin = get_admins(cfg).get(username)
-        if admin and check_password_hash(admin.get('password_hash', ''), password):
+        token = request.form.get('token', '')
+        expected = current_app.terraria_config.ADMIN_TOKEN
+        if expected and secrets.compare_digest(token, expected):
             session['logged_in'] = True
-            session['username'] = username
-            session['role'] = admin.get('role', 'admin')
             return redirect(url_for('dashboard.dashboard'))
-        flash('Invalid credentials', 'error')
+        flash('Invalid token', 'error')
     return render_template('login.html')
 
 

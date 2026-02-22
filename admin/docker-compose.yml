@@ -12,7 +12,7 @@ services:
       - /opt/terraria:/opt/terraria
     environment:
       - SECRET_KEY=${SECRET_KEY}
-      - ADMIN_FILE=${ADMIN_FILE:-/opt/terraria/admin_users.json}
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
       - SERVER_CONFIG=${SERVER_CONFIG:-/opt/terraria/server.ini}
       - WORLD_DIR=${WORLD_DIR:-/opt/terraria/worlds}
       - BACKUP_DIR=${BACKUP_DIR:-/opt/terraria/backups}
