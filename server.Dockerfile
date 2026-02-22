@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/runtime:6.0-bookworm-slim
+FROM mcr.microsoft.com/dotnet/runtime:8.0-bookworm-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends wget unzip \
@@ -7,7 +7,7 @@ RUN apt-get update \
 WORKDIR /server
 
 # Download tModLoader. Override version with: --build-arg TMODLOADER_VERSION=v2024.x.y.z
-ARG TMODLOADER_VERSION=v2024.9.3.0
+ARG TMODLOADER_VERSION=v2025.12.3.0
 RUN wget -q \
       "https://github.com/tModLoader/tModLoader/releases/download/${TMODLOADER_VERSION}/tModLoader.zip" \
       -O /tmp/tModLoader.zip \
