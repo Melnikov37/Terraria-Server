@@ -942,7 +942,16 @@ def _download_mod_from_workshop(steamcmd, workshop_id):
         if not tmod_files:
             return None, f'No .tmod file found in Workshop item {workshop_id}'
 
-        tmod_file = max(tmod_files, key=os.path.getmtime)
+        def _tmod_version_key(path):
+            # steamcmd stores mods in subdirs named after tML version: "2025.12", "2025.4", etc.
+            # Sort numerically so 2025.12 > 2025.9 > 2025.4 (not lexicographically).
+            dirname = os.path.basename(os.path.dirname(path))
+            try:
+                return [int(x) for x in dirname.split('.')]
+            except (ValueError, AttributeError):
+                return [0]
+
+        tmod_file = max(tmod_files, key=_tmod_version_key)
         os.makedirs(MODS_DIR, exist_ok=True)
         dest = os.path.join(MODS_DIR, os.path.basename(tmod_file))
         shutil.copy2(tmod_file, dest)
