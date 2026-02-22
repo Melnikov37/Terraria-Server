@@ -14,26 +14,31 @@ def get_server_type(cfg):
 
 def _service_active(cfg):
     """Return True if the terraria server Docker container is running."""
+    import docker
+    client = docker.from_env()
     try:
-        import docker
-        client = docker.from_env()
         container = client.containers.get(cfg.SERVER_CONTAINER)
         return container.status == 'running'
     except Exception:
         return False
+    finally:
+        client.close()
 
 
 def container_action(action, cfg):
     """Start, stop, or restart the terraria server container via Docker SDK."""
     import docker
     client = docker.from_env()
-    container = client.containers.get(cfg.SERVER_CONTAINER)
-    if action == 'stop':
-        container.stop(timeout=30)
-    elif action == 'start':
-        container.start()
-    elif action == 'restart':
-        container.restart(timeout=30)
+    try:
+        container = client.containers.get(cfg.SERVER_CONTAINER)
+        if action == 'stop':
+            container.stop(timeout=30)
+        elif action == 'start':
+            container.start()
+        elif action == 'restart':
+            container.restart(timeout=30)
+    finally:
+        client.close()
 
 
 def _stored_version(cfg):

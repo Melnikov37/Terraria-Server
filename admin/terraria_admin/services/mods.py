@@ -282,6 +282,12 @@ def download_mod_from_workshop(steamcmd, workshop_id, cfg):
             steamcmd_home, 'Steam', 'steamapps', 'workshop',
             'content', cfg.TERRARIA_APP_ID, workshop_id
         )
+        # Some steamcmd versions store tModLoader mods under App ID 1281930 instead of 105600
+        if not os.path.isdir(workshop_dir):
+            workshop_dir = os.path.join(
+                steamcmd_home, 'Steam', 'steamapps', 'workshop',
+                'content', '1281930', workshop_id
+            )
 
         if not os.path.isdir(workshop_dir):
             tail = (result.stdout + result.stderr)[-600:]

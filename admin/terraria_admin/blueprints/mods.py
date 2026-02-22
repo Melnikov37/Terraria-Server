@@ -101,7 +101,7 @@ def mods_delete():
 
     filename = secure_filename(mod_name + '.tmod')
     target = os.path.join(cfg.MODS_DIR, filename)
-    if not target.startswith(cfg.MODS_DIR):
+    if not target.startswith(cfg.MODS_DIR.rstrip(os.sep) + os.sep):
         flash('Invalid mod path', 'error')
         return redirect(url_for('mods.mods'))
 

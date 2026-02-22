@@ -29,13 +29,15 @@ def screen_capture(cfg, wait=0.6):
 
 def is_screen_running(cfg):
     """Check whether the terraria server container is running."""
+    import docker
+    client = docker.from_env()
     try:
-        import docker
-        client = docker.from_env()
         container = client.containers.get(cfg.SERVER_CONTAINER)
         return container.status == 'running'
     except Exception:
         return False
+    finally:
+        client.close()
 
 
 def screen_cmd_output(cmd, cfg, wait=0.8):

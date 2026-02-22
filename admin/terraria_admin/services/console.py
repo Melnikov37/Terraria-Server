@@ -26,10 +26,11 @@ def start_console_poller(app):
     cfg = app.terraria_config
 
     def _run():
-        import docker
-        client = docker.from_env()
         while True:
+            client = None
             try:
+                import docker
+                client = docker.from_env()
                 container = client.containers.get(cfg.SERVER_CONTAINER)
                 for raw_line in container.logs(stream=True, follow=True, tail=100):
                     line = ANSI_ESCAPE.sub(
@@ -44,11 +45,12 @@ def start_console_poller(app):
                     check_player_event(line, cfg, discord_notify)
             except Exception as exc:
                 log.warning('Console poller error (retry in 5s): %s', exc)
-                try:
-                    client.close()
-                except Exception:
-                    pass
-                time.sleep(5)
-                client = docker.from_env()
+            finally:
+                if client:
+                    try:
+                        client.close()
+                    except Exception:
+                        pass
+            time.sleep(5)
 
     threading.Thread(target=_run, daemon=True, name='console-poller').start()

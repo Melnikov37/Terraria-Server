@@ -52,6 +52,9 @@ class Config:
 
     @property
     def DISCORD_CONFIG_FILE(self):
+        explicit = os.environ.get('DISCORD_CONFIG')
+        if explicit:
+            return explicit
         return os.path.join(self.TERRARIA_DIR, '.discord.json')
 
     SERVICE_NAME = 'terraria'
