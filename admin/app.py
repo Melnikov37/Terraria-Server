@@ -12,6 +12,7 @@ import time
 import shutil
 import tempfile
 import zlib
+import threading
 from pathlib import Path
 from datetime import datetime
 
@@ -42,6 +43,8 @@ SCREEN_SESSION  = os.environ.get('SCREEN_SESSION', 'terraria')
 MODS_DIR        = os.environ.get('MODS_DIR', '/opt/terraria/.local/share/Terraria/tModLoader/Mods')
 STEAMCMD_BIN    = os.environ.get('STEAMCMD_BIN', '/opt/steamcmd/steamcmd.sh')
 TERRARIA_APP_ID = '1281930'
+# Set to N > 0 to auto-update mods every N hours in the background (0 = disabled)
+MOD_UPDATE_INTERVAL_HOURS = int(os.environ.get('MOD_UPDATE_INTERVAL_HOURS', '0'))
 
 # Known Workshop IDs for popular mods — used for auto-installing dependencies.
 # Keys are tModLoader internal mod names (as they appear in modReferences / .tmod filenames).
@@ -1011,6 +1014,74 @@ def _ensure_mod_dependencies(tmod_path, steamcmd):
     return messages
 
 
+# ------------------------------------------------------------------
+# Mod metadata cache  (.mod_meta.json next to enabled.json)
+# Stores: {mod_name: {version, workshop_id, installed_at, last_updated}}
+# ------------------------------------------------------------------
+
+def _meta_file():
+    return os.path.join(MODS_DIR, '.mod_meta.json')
+
+
+def _get_mod_meta():
+    path = _meta_file()
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_mod_meta(meta):
+    os.makedirs(MODS_DIR, exist_ok=True)
+    with open(_meta_file(), 'w') as f:
+        json.dump(meta, f, indent=2)
+
+
+def _extract_tmod_version(tmod_path):
+    """Read mod name and version from .tmod header without parsing the full file.
+
+    Only reads the first ~512 bytes (header ends well before that).
+    Returns (mod_name, mod_version) strings.
+    """
+    with open(tmod_path, 'rb') as fh:
+        raw = fh.read(512)
+    pos = 4
+    _, pos = _read_7bit_string(raw, pos)   # tML version
+    pos += 20 + 256 + 4                    # hash + sig + datalen
+    mod_name, pos = _read_7bit_string(raw, pos)
+    mod_version, _ = _read_7bit_string(raw, pos)
+    return mod_name, mod_version
+
+
+def _record_mod_installed(mod_name, tmod_path, workshop_id=None):
+    """Update metadata cache after a mod is installed or updated."""
+    meta = _get_mod_meta()
+    try:
+        _, version = _extract_tmod_version(tmod_path)
+    except Exception:
+        version = 'unknown'
+    now = datetime.now().isoformat(timespec='seconds')
+    entry = meta.get(mod_name, {})
+    entry['version'] = version
+    entry['last_updated'] = now
+    if 'installed_at' not in entry:
+        entry['installed_at'] = now
+    if workshop_id:
+        entry['workshop_id'] = workshop_id
+    meta[mod_name] = entry
+    _save_mod_meta(meta)
+
+
+def _remove_mod_meta(mod_name):
+    meta = _get_mod_meta()
+    if mod_name in meta:
+        meta.pop(mod_name)
+        _save_mod_meta(meta)
+
+
 def _get_enabled_mods():
     """Return dict {ModName: bool} regardless of enabled.json format.
 
@@ -1048,6 +1119,7 @@ def _list_mods():
         return mods
 
     enabled = _get_enabled_mods()
+    meta = _get_mod_meta()
 
     for fname in sorted(os.listdir(MODS_DIR)):
         if not fname.endswith('.tmod'):
@@ -1055,12 +1127,16 @@ def _list_mods():
         mod_name = fname[:-5]
         fpath = os.path.join(MODS_DIR, fname)
         size_bytes = os.path.getsize(fpath)
-        size_mb = round(size_bytes / (1024 * 1024), 2)
+        mod_meta = meta.get(mod_name, {})
+        workshop_id = mod_meta.get('workshop_id') or KNOWN_WORKSHOP_IDS.get(mod_name)
         mods.append({
             'name': mod_name,
             'filename': fname,
             'enabled': enabled.get(mod_name, False),
-            'size_mb': size_mb,
+            'size_mb': round(size_bytes / (1024 * 1024), 2),
+            'version': mod_meta.get('version', '?'),
+            'workshop_id': workshop_id,
+            'last_updated': mod_meta.get('last_updated', ''),
         })
 
     return mods
@@ -1114,13 +1190,12 @@ def mods_upload():
     f.save(dest)
 
     mod_name = filename[:-5]
-    # Auto-enable the newly uploaded mod
     enabled = _get_enabled_mods()
     enabled[mod_name] = True
     _save_enabled_mods(enabled)
+    _record_mod_installed(mod_name, dest)
     flash(f'Mod "{mod_name}" uploaded and enabled.', 'success')
 
-    # Auto-install any missing dependencies if steamcmd is available
     steamcmd = STEAMCMD_BIN if os.path.exists(STEAMCMD_BIN) else shutil.which('steamcmd')
     if steamcmd:
         for ok, msg in _ensure_mod_dependencies(dest, steamcmd):
@@ -1155,10 +1230,10 @@ def mods_delete():
 
     if os.path.exists(target):
         os.remove(target)
-        # Remove from enabled.json too
         enabled = _get_enabled_mods()
         enabled.pop(mod_name, None)
         _save_enabled_mods(enabled)
+        _remove_mod_meta(mod_name)
         flash(f'Mod "{mod_name}" deleted. Restart the server to apply.', 'success')
     else:
         flash(f'Mod file not found: {filename}', 'error')
@@ -1185,17 +1260,98 @@ def mods_workshop():
         flash(err, 'error')
         return redirect(url_for('mods'))
 
+    dest = os.path.join(MODS_DIR, f'{mod_name}.tmod')
     enabled = _get_enabled_mods()
     enabled[mod_name] = True
     _save_enabled_mods(enabled)
+    _record_mod_installed(mod_name, dest, workshop_id)
     flash(f'Mod "{mod_name}" installed and enabled!', 'success')
 
-    # Auto-install any missing dependencies declared in the .tmod
-    dest = os.path.join(MODS_DIR, f'{mod_name}.tmod')
     for ok, msg in _ensure_mod_dependencies(dest, steamcmd):
         flash(msg, 'success' if ok else 'error')
 
     flash('Restart the server to apply changes.', 'success')
+    return redirect(url_for('mods'))
+
+
+@app.route('/mods/update', methods=['POST'])
+@login_required
+def mods_update_one():
+    mod_name = request.form.get('mod_name', '').strip()
+    if not mod_name:
+        flash('Mod name is required', 'error')
+        return redirect(url_for('mods'))
+
+    meta = _get_mod_meta()
+    workshop_id = meta.get(mod_name, {}).get('workshop_id') or KNOWN_WORKSHOP_IDS.get(mod_name)
+    if not workshop_id:
+        flash(f'No Workshop ID known for "{mod_name}". Cannot auto-update.', 'error')
+        return redirect(url_for('mods'))
+
+    steamcmd = STEAMCMD_BIN if os.path.exists(STEAMCMD_BIN) else shutil.which('steamcmd')
+    if not steamcmd:
+        flash('steamcmd not found', 'error')
+        return redirect(url_for('mods'))
+
+    old_version = meta.get(mod_name, {}).get('version', '?')
+    new_mod_name, err = _download_mod_from_workshop(steamcmd, workshop_id)
+    if err:
+        flash(err, 'error')
+        return redirect(url_for('mods'))
+
+    dest = os.path.join(MODS_DIR, f'{new_mod_name}.tmod')
+    _record_mod_installed(new_mod_name, dest, workshop_id)
+    new_version = _get_mod_meta().get(new_mod_name, {}).get('version', '?')
+
+    if old_version != new_version:
+        flash(f'"{mod_name}" updated: {old_version} → {new_version}. Restart server to apply.', 'success')
+    else:
+        flash(f'"{mod_name}" is already up to date (v{new_version}).', 'success')
+
+    return redirect(url_for('mods'))
+
+
+@app.route('/mods/update_all', methods=['POST'])
+@login_required
+def mods_update_all():
+    steamcmd = STEAMCMD_BIN if os.path.exists(STEAMCMD_BIN) else shutil.which('steamcmd')
+    if not steamcmd:
+        flash('steamcmd not found', 'error')
+        return redirect(url_for('mods'))
+
+    meta = _get_mod_meta()
+    updated = []
+    skipped = []
+    failed = []
+
+    for mod in _list_mods():
+        mod_name = mod['name']
+        workshop_id = mod.get('workshop_id')
+        if not workshop_id:
+            skipped.append(mod_name)
+            continue
+
+        old_version = meta.get(mod_name, {}).get('version', '?')
+        new_mod_name, err = _download_mod_from_workshop(steamcmd, workshop_id)
+        if err:
+            failed.append(f'{mod_name}: {err}')
+            continue
+
+        dest = os.path.join(MODS_DIR, f'{new_mod_name}.tmod')
+        _record_mod_installed(new_mod_name, dest, workshop_id)
+        new_version = _get_mod_meta().get(new_mod_name, {}).get('version', '?')
+        if old_version != new_version:
+            updated.append(f'{mod_name}: {old_version} → {new_version}')
+
+    if updated:
+        flash(f'Updated {len(updated)} mods — restart to apply: {", ".join(updated)}', 'success')
+    else:
+        flash('All mods are up to date.', 'success')
+    if skipped:
+        flash(f'Skipped (no Workshop ID): {", ".join(skipped)}', 'success')
+    for msg in failed:
+        flash(f'Failed: {msg}', 'error')
+
     return redirect(url_for('mods'))
 
 
@@ -1314,6 +1470,54 @@ def api_mods_debug():
             if fname.endswith('.tmod'):
                 results.append(_debug_tmod(os.path.join(MODS_DIR, fname)))
     return jsonify(results)
+
+
+# ============================================================
+# Background mod updater
+# ============================================================
+
+def _run_background_mod_updates():
+    """Daemon thread: periodically re-download all Workshop mods.
+
+    Replaces .tmod files silently; does not restart the server.
+    Admin sees updated versions on next page load and restarts manually.
+    """
+    steamcmd = STEAMCMD_BIN if os.path.exists(STEAMCMD_BIN) else shutil.which('steamcmd')
+    if not steamcmd:
+        return
+
+    meta = _get_mod_meta()
+    for mod in _list_mods():
+        mod_name = mod['name']
+        workshop_id = mod.get('workshop_id')
+        if not workshop_id:
+            continue
+        try:
+            new_mod_name, err = _download_mod_from_workshop(steamcmd, workshop_id)
+            if not err:
+                dest = os.path.join(MODS_DIR, f'{new_mod_name}.tmod')
+                _record_mod_installed(new_mod_name, dest, workshop_id)
+        except Exception:
+            pass
+
+
+def _start_mod_update_scheduler():
+    if MOD_UPDATE_INTERVAL_HOURS <= 0:
+        return
+
+    def _loop():
+        while True:
+            time.sleep(MOD_UPDATE_INTERVAL_HOURS * 3600)
+            try:
+                _run_background_mod_updates()
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_loop, daemon=True, name='mod-updater')
+    t.start()
+
+
+_start_mod_update_scheduler()
 
 
 # ============================================================
