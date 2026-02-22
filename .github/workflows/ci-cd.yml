@@ -36,6 +36,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Debug secret lengths
+        run: |
+          echo "SECRET_KEY length: ${#SK}"
+          echo "ADMIN_TOKEN length: ${#AT}"
+        env:
+          SK: ${{ secrets.SECRET_KEY }}
+          AT: ${{ secrets.ADMIN_TOKEN }}
+
       - name: Check imports
         run: |
           python - <<'EOF'
