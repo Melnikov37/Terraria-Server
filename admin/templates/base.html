@@ -4,246 +4,651 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Terraria Admin{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #0d1117;
-            --bg-card: #161b22;
-            --bg-input: #21262d;
-            --border: #30363d;
-            --text: #c9d1d9;
-            --text-muted: #8b949e;
-            --accent: #58a6ff;
-            --success: #3fb950;
-            --danger: #f85149;
-            --warning: #d29922;
+            --bg:          #0a0d14;
+            --bg-card:     #111827;
+            --bg-elevated: #1a2236;
+            --bg-input:    #1e2a3a;
+            --border:      #1f2d45;
+
+            --text:        #e2e8f0;
+            --text-muted:  #64748b;
+            --text-dim:    #94a3b8;
+
+            --accent:      #3b82f6;
+            --accent-hover:#2563eb;
+            --accent-glow: rgba(59,130,246,0.15);
+
+            --success:     #22c55e;   --success-bg: rgba(34,197,94,0.12);
+            --danger:      #ef4444;   --danger-bg:  rgba(239,68,68,0.12);
+            --warning:     #f59e0b;   --warning-bg: rgba(245,158,11,0.12);
+
+            --sidebar-w:   240px;
+            --sidebar-bg:  #0d1524;
+
+            --font-sans:   'Inter', -apple-system, sans-serif;
+            --font-mono:   'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+
+            --radius-sm: 6px;  --radius-md: 10px;  --radius-lg: 14px;
+            --transition: all 0.18s ease;
+            --shadow-card: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px var(--border);
         }
+
         * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: var(--font-sans);
             background: var(--bg);
             color: var(--text);
             line-height: 1.5;
             min-height: 100vh;
         }
+
         a { color: var(--accent); text-decoration: none; }
         a:hover { text-decoration: underline; }
 
+        /* ── Layout ── */
         .layout { display: flex; min-height: 100vh; }
 
+        /* ── Sidebar ── */
         .sidebar {
-            width: 220px;
-            background: var(--bg-card);
+            width: var(--sidebar-w);
+            background: var(--sidebar-bg);
             border-right: 1px solid var(--border);
-            padding: 20px 0;
+            padding: 0;
             position: fixed;
             height: 100vh;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
+            transition: transform 0.25s ease;
+            z-index: 200;
         }
-        .sidebar-header {
-            padding: 0 20px 20px;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 10px;
-        }
-        .sidebar-header h1 {
-            font-size: 1.2rem;
-            color: var(--accent);
-        }
-        .sidebar-header small { color: var(--text-muted); }
 
-        .nav { list-style: none; }
-        .nav a {
-            display: block;
-            padding: 10px 20px;
-            color: var(--text);
-            border-left: 3px solid transparent;
+        .sidebar-header {
+            padding: 20px 20px 16px;
+            border-bottom: 1px solid var(--border);
         }
-        .nav a:hover, .nav a.active {
-            background: var(--bg-input);
-            border-left-color: var(--accent);
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .sidebar-logo svg {
+            width: 28px; height: 28px;
+            color: var(--accent);
+            flex-shrink: 0;
+        }
+        .sidebar-logo-text h1 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.2;
+        }
+        .sidebar-logo-text small {
+            color: var(--text-muted);
+            font-size: 0.72rem;
+        }
+
+        .nav { list-style: none; padding: 10px 0; flex: 1; }
+        .nav li { position: relative; }
+        .nav a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 20px;
+            color: var(--text-dim);
+            font-size: 0.88rem;
+            font-weight: 500;
+            border-left: 3px solid transparent;
+            transition: var(--transition);
+        }
+        .nav a svg { width: 17px; height: 17px; flex-shrink: 0; opacity: 0.7; }
+        .nav a:hover {
+            background: var(--bg-elevated);
+            border-left-color: var(--border);
+            color: var(--text);
             text-decoration: none;
         }
-        .nav a.active { color: var(--accent); }
+        .nav a:hover svg { opacity: 1; }
+        .nav a.active {
+            background: var(--accent-glow);
+            border-left-color: var(--accent);
+            color: var(--accent);
+            text-decoration: none;
+        }
+        .nav a.active svg { opacity: 1; color: var(--accent); }
 
-        .main { flex: 1; margin-left: 220px; padding: 30px; }
+        .nav-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 8px 16px;
+        }
 
-        .header {
+        .sidebar-footer {
+            padding: 14px 20px;
+            border-top: 1px solid var(--border);
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .sidebar-footer svg { width: 14px; height: 14px; }
+
+        /* ── Hamburger (mobile) ── */
+        .hamburger {
+            display: none;
+            position: fixed;
+            top: 14px;
+            left: 14px;
+            z-index: 300;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 8px;
+            cursor: pointer;
+            color: var(--text);
+        }
+        .hamburger svg { width: 20px; height: 20px; display: block; }
+
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 150;
+        }
+
+        /* ── Main content ── */
+        .main { flex: 1; margin-left: var(--sidebar-w); padding: 28px 32px; }
+
+        .header, .page-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
+            gap: 16px;
         }
-        .header h2 { font-size: 1.5rem; }
+        .page-header h2 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text);
+        }
 
+        /* ── Cards ── */
         .card {
             background: var(--bg-card);
+            background-image: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 40%);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             padding: 20px;
             margin-bottom: 20px;
+            box-shadow: var(--shadow-card);
         }
         .card-title {
-            font-size: 1rem;
+            font-size: 0.75rem;
+            font-weight: 600;
             color: var(--text-muted);
-            margin-bottom: 15px;
+            margin-bottom: 14px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.6px;
         }
 
+        /* ── Grid ── */
         .grid { display: grid; gap: 20px; }
         .grid-2 { grid-template-columns: repeat(2, 1fr); }
         .grid-3 { grid-template-columns: repeat(3, 1fr); }
         .grid-4 { grid-template-columns: repeat(4, 1fr); }
-        @media (max-width: 900px) {
-            .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
-            .sidebar { display: none; }
-            .main { margin-left: 0; }
+
+        /* ── Stat cards ── */
+        .stat { text-align: center; padding: 14px 10px; }
+        .stat-icon {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 8px;
+        }
+        .stat-icon svg { width: 24px; height: 24px; color: var(--accent); opacity: 0.7; }
+        .stat-value { font-size: 1.8rem; font-weight: 700; color: var(--text); line-height: 1.1; }
+        .stat-label { color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; }
+        .stat-bar {
+            margin-top: 8px;
+            height: 3px;
+            background: var(--border);
+            border-radius: 99px;
+            overflow: hidden;
+        }
+        .stat-bar-fill {
+            height: 100%;
+            border-radius: 99px;
+            background: var(--accent);
+            transition: width 0.4s ease;
         }
 
-        .stat { text-align: center; padding: 15px; }
-        .stat-value { font-size: 2rem; font-weight: bold; color: var(--accent); }
-        .stat-label { color: var(--text-muted); font-size: 0.9rem; }
-
+        /* ── Buttons ── */
         .btn {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
             padding: 8px 16px;
             border: none;
-            border-radius: 6px;
+            border-radius: var(--radius-sm);
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: 0.875rem;
             font-weight: 500;
-            transition: opacity 0.2s;
+            font-family: var(--font-sans);
+            transition: var(--transition);
+            white-space: nowrap;
         }
-        .btn:hover { opacity: 0.8; }
-        .btn-primary { background: var(--accent); color: #fff; }
+        .btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+        .btn:hover { filter: brightness(1.12); }
+        .btn:active { transform: translateY(1px); }
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 0 0 0 var(--accent-glow);
+        }
+        .btn-primary:hover { background: var(--accent-hover); box-shadow: 0 0 0 3px var(--accent-glow); }
         .btn-success { background: var(--success); color: #fff; }
-        .btn-danger { background: var(--danger); color: #fff; }
+        .btn-success:hover { box-shadow: 0 0 0 3px rgba(34,197,94,0.2); }
+        .btn-danger  { background: var(--danger);  color: #fff; }
+        .btn-danger:hover  { box-shadow: 0 0 0 3px rgba(239,68,68,0.2); }
         .btn-warning { background: var(--warning); color: #000; }
+        .btn-warning:hover { box-shadow: 0 0 0 3px rgba(245,158,11,0.2); }
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+        }
+        .btn-ghost:hover { background: var(--bg-elevated); color: var(--text); }
         .btn-sm { padding: 4px 10px; font-size: 0.8rem; }
-        .btn-block { display: block; width: 100%; }
+        .btn-block { display: flex; width: 100%; justify-content: center; }
 
-        .form-group { margin-bottom: 15px; }
+        /* ── Forms ── */
+        .form-group { margin-bottom: 14px; }
         .form-group label {
             display: block;
-            margin-bottom: 5px;
-            color: var(--text-muted);
-            font-size: 0.9rem;
+            margin-bottom: 6px;
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            font-weight: 500;
         }
         input, select, textarea {
             width: 100%;
-            padding: 10px 12px;
+            padding: 9px 12px;
             background: var(--bg-input);
             border: 1px solid var(--border);
-            border-radius: 6px;
+            border-radius: var(--radius-sm);
             color: var(--text);
-            font-size: 1rem;
+            font-size: 0.9rem;
+            font-family: var(--font-sans);
+            transition: var(--transition);
         }
         input:focus, select:focus, textarea:focus {
             outline: none;
             border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
         }
+        input[type="file"] { cursor: pointer; }
 
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-        }
+        /* ── Tables ── */
+        .table { width: 100%; border-collapse: collapse; }
         .table th, .table td {
-            padding: 12px;
+            padding: 11px 12px;
             text-align: left;
             border-bottom: 1px solid var(--border);
         }
         .table th {
             color: var(--text-muted);
-            font-weight: 500;
-            font-size: 0.85rem;
+            font-weight: 600;
+            font-size: 0.75rem;
             text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        .table tr:hover { background: var(--bg-input); }
+        .table tr:last-child td { border-bottom: none; }
+        .table tr:hover td { background: var(--bg-elevated); }
 
+        /* ── Badges ── */
         .badge {
             display: inline-block;
-            padding: 3px 8px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 500;
+            padding: 2px 8px;
+            border-radius: 99px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.3px;
         }
-        .badge-success { background: rgba(63, 185, 80, 0.2); color: var(--success); }
-        .badge-danger { background: rgba(248, 81, 73, 0.2); color: var(--danger); }
-        .badge-warning { background: rgba(210, 153, 34, 0.2); color: var(--warning); }
-        .badge-info { background: rgba(88, 166, 255, 0.2); color: var(--accent); }
+        .badge-success { background: var(--success-bg); color: var(--success); }
+        .badge-danger  { background: var(--danger-bg);  color: var(--danger); }
+        .badge-warning { background: var(--warning-bg); color: var(--warning); }
+        .badge-info    { background: var(--accent-glow); color: var(--accent); }
 
-        .sidebar-footer {
-            padding: 15px 20px;
-            border-top: 1px solid var(--border);
-            margin-top: auto;
-            font-size: 0.8rem;
-            color: var(--text-muted);
-        }
-
-        .flash {
-            padding: 12px 16px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-        }
-        .flash.success { background: rgba(63, 185, 80, 0.15); border: 1px solid var(--success); }
-        .flash.error { background: rgba(248, 81, 73, 0.15); border: 1px solid var(--danger); }
-
+        /* ── Status dot ── */
         .status-dot {
             display: inline-block;
-            width: 10px;
-            height: 10px;
+            width: 9px;
+            height: 9px;
             border-radius: 50%;
-            margin-right: 8px;
+            margin-right: 7px;
+            flex-shrink: 0;
         }
-        .status-dot.online { background: var(--success); }
+        .status-dot.online  { background: var(--success); box-shadow: 0 0 0 3px rgba(34,197,94,0.2); }
         .status-dot.offline { background: var(--danger); }
 
-        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        @keyframes pulse-green {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+            50%       { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+        }
+        .status-dot.online { animation: pulse-green 2.4s ease infinite; }
+
+        /* ── Misc ── */
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
         .inline-form { display: inline; }
+        code {
+            font-family: var(--font-mono);
+            font-size: 0.85em;
+            background: var(--bg-input);
+            padding: 1px 6px;
+            border-radius: 4px;
+            color: var(--accent);
+        }
+
+        /* ── Toast notifications ── */
+        #toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+        .toast {
+            pointer-events: all;
+            min-width: 280px;
+            max-width: 400px;
+            padding: 12px 16px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            background: var(--bg-elevated);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            animation: toast-in 0.25s ease;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .toast.hiding { opacity: 0; transform: translateX(20px); }
+        .toast-icon { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; }
+        .toast-body { flex: 1; font-size: 0.875rem; line-height: 1.4; }
+        .toast.success .toast-icon { color: var(--success); }
+        .toast.error   .toast-icon { color: var(--danger); }
+        .toast.success { border-left: 3px solid var(--success); }
+        .toast.error   { border-left: 3px solid var(--danger); }
+        @keyframes toast-in {
+            from { opacity: 0; transform: translateX(30px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 900px) {
+            .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+            .sidebar { transform: translateX(calc(-1 * var(--sidebar-w))); }
+            .sidebar.open { transform: translateX(0); }
+            .sidebar-overlay.open { display: block; }
+            .main { margin-left: 0; padding: 20px 16px 20px 16px; padding-top: 60px; }
+            .hamburger { display: flex; }
+        }
     </style>
 </head>
 <body>
+    {% if session.logged_in %}
+    <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle menu">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+    </button>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+    {% endif %}
+
     <div class="layout">
         {% if session.logged_in %}
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <h1>Terraria</h1>
-                <small>Server Admin</small>
+                <div class="sidebar-logo">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25
+                                 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5
+                                 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
+                    </svg>
+                    <div class="sidebar-logo-text">
+                        <h1>Terraria</h1>
+                        <small>Server Admin</small>
+                    </div>
+                </div>
             </div>
+
             <ul class="nav">
-                <li><a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a></li>
-                <li><a href="{{ url_for('players') }}" class="{{ 'active' if request.endpoint == 'players' }}">Players</a></li>
-                <li><a href="{{ url_for('world') }}" class="{{ 'active' if request.endpoint in ('world', 'world_switch') }}">World</a></li>
-                <li><a href="{{ url_for('mods') }}" class="{{ 'active' if request.endpoint in ('mods', 'mods_search') }}">Mods</a></li>
-                <li><a href="{{ url_for('backups') }}" class="{{ 'active' if request.endpoint.startswith('backup') }}">Backups</a></li>
-                <li><a href="{{ url_for('logs') }}" class="{{ 'active' if request.endpoint == 'logs' }}">Logs</a></li>
-                <li><a href="{{ url_for('console') }}" class="{{ 'active' if request.endpoint == 'console' }}">Console</a></li>
-                <li><a href="{{ url_for('config') }}" class="{{ 'active' if request.endpoint == 'config' }}">Config</a></li>
+                <li>
+                    <a href="{{ url_for('dashboard.dashboard') }}"
+                       class="{{ 'active' if request.blueprint == 'dashboard' }}">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25
+                                     2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25
+                                     2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 018.25
+                                     20.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25
+                                     2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0
+                                     01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0
+                                     012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/>
+                        </svg>
+                        Dashboard
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('players.players') }}"
+                       class="{{ 'active' if request.blueprint == 'players' }}">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952
+                                     4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15
+                                     19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375
+                                     6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25
+                                     2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/>
+                        </svg>
+                        Players
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('world.world') }}"
+                       class="{{ 'active' if request.blueprint == 'world' }}">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M20.893 13.393l-1.135-1.135a2.252 2.252 0 01-.421-.585l-1.08-2.16a.414.414
+                                     0 00-.663-.107.827.827 0 01-.812.21l-1.273-.363a.89.89 0 00-.738 1.595l.587.39c.59.395.674
+                                     1.23.172 1.732l-.2.2c-.212.212-.33.498-.33.796v.41c0 .409-.11.809-.32 1.158l-1.315
+                                     2.191a2.11 2.11 0 01-1.81 1.025 1.055 1.055 0 01-1.055-1.055v-1.172c0-.92-.56-1.747-1.414-2.089l-.655-.261a2.25
+                                     2.25 0 01-1.383-2.46l.007-.042a2.25 2.25 0 01.29-.787l.09-.15a2.25 2.25 0 012.37-1.048l1.178.236a1.125
+                                     1.125 0 001.302-.795l.208-.73a1.125 1.125 0 00-.578-1.315l-.665-.332-.091.091a2.25 2.25 0
+                                     01-1.591.659h-.18c-.249 0-.487.1-.662.274a.931.931 0 01-1.458-1.137l1.411-2.353a2.25 2.25
+                                     0 00.286-.76m11.928 9.869A9 9 0 008.965 3.525m11.928 9.868A9 9 0 118.965 3.525"/>
+                        </svg>
+                        World
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('mods.mods') }}"
+                       class="{{ 'active' if request.blueprint == 'mods' }}">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003
+                                     0-1.036-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349
+                                     1.003.215.283.401.604.401.959v0a.64.64 0 01-.657.643 48.39 48.39 0
+                                     01-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 01-.658.663v0c-.355
+                                     0-.676-.186-.959-.401a1.647 1.647 0 00-1.003-.349c-1.036 0-1.875
+                                     1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31
+                                     0 .555.26.532.57a48.039 48.039 0 01-.642 5.056c1.518.19 3.058.309
+                                     4.616.345a.64.64 0 00.657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647
+                                     0 01-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25
+                                     1.875 0 .369-.128.713-.349 1.003-.215.283-.4.604-.4.959v0c0 .333.277.599.61.58a48.1
+                                     48.1 0 005.427-.63 48.05 48.05 0 00.582-4.717.532.532 0 00-.533-.57v0c-.355
+                                     0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.035 0-1.875-1.007-1.875-2.25s.84-2.25
+                                     1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.959.401v0a.656.656 0
+                                     00.658-.663 48.422 48.422 0 00-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578
+                                     0 01-.61-.58v0z"/>
+                        </svg>
+                        Mods
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('backups.backups') }}"
+                       class="{{ 'active' if request.blueprint == 'backups' }}">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5
+                                     0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0
+                                     2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0
+                                     2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/>
+                        </svg>
+                        Backups
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('api.logs') }}"
+                       class="{{ 'active' if request.endpoint == 'api.logs' }}">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875
+                                     1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"/>
+                        </svg>
+                        Logs
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('console.console') }}"
+                       class="{{ 'active' if request.blueprint == 'console' }}">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021
+                                     18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25
+                                     0 002.25 2.25z"/>
+                        </svg>
+                        Console
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('config_bp.config') }}"
+                       class="{{ 'active' if request.blueprint == 'config_bp' }}">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142
+                                     1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12
+                                     1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94
+                                     1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107
+                                     1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0
+                                     01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55
+                                     0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125
+                                     1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125
+                                     1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272
+                                     1.204.107.397-.165.71-.505.78-.929l.15-.894z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                        Config
+                    </a>
+                </li>
                 {% if session.get('role') == 'superadmin' %}
-                <li><a href="{{ url_for('admins_page') }}" class="{{ 'active' if request.endpoint == 'admins_page' }}">Admins</a></li>
+                <li class="nav-divider"></li>
+                <li>
+                    <a href="{{ url_for('admins.admins_page') }}"
+                       class="{{ 'active' if request.blueprint == 'admins' }}">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5
+                                     7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/>
+                        </svg>
+                        Admins
+                    </a>
+                </li>
                 {% endif %}
-                <li><a href="{{ url_for('logout') }}">Logout</a></li>
+                <li class="nav-divider"></li>
+                <li>
+                    <a href="{{ url_for('auth.logout') }}">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25
+                                     2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/>
+                        </svg>
+                        Logout
+                    </a>
+                </li>
             </ul>
+
             <div class="sidebar-footer">
-                {{ session.get('username', '') }}
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982
+                             2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966
+                             8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                <span>{{ session.get('username', '') }}</span>
                 {% if session.get('role') %}
-                <span class="badge badge-info" style="margin-left:5px;">{{ session.get('role') }}</span>
+                <span class="badge badge-info" style="margin-left:auto;">{{ session.get('role') }}</span>
                 {% endif %}
             </div>
         </aside>
         {% endif %}
 
         <main class="main">
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% for category, message in messages %}
-                    <div class="flash {{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endwith %}
-
             {% block content %}{% endblock %}
         </main>
     </div>
+
+    <!-- Toast container -->
+    <div id="toast-container"></div>
+
+    <!-- Flash messages → toasts -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <script>
+    (function() {
+        var msgs = {{ messages | tojson }};
+        msgs.forEach(function(m) { showToast(m[0], m[1]); });
+    })();
+    </script>
+    {% endif %}
+    {% endwith %}
+
+    <script>
+    function showToast(category, message) {
+        var container = document.getElementById('toast-container');
+        var cls = (category === 'error') ? 'error' : 'success';
+        var iconSvg = cls === 'success'
+            ? '<svg class="toast-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+            : '<svg class="toast-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>';
+        var t = document.createElement('div');
+        t.className = 'toast ' + cls;
+        t.innerHTML = iconSvg + '<div class="toast-body">' + message + '</div>';
+        container.appendChild(t);
+        setTimeout(function() {
+            t.classList.add('hiding');
+            setTimeout(function() { t.remove(); }, 320);
+        }, 4000);
+    }
+
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('open');
+        document.getElementById('sidebarOverlay').classList.toggle('open');
+    }
+    function closeSidebar() {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebarOverlay').classList.remove('open');
+    }
+    </script>
 
     {% block scripts %}{% endblock %}
 </body>

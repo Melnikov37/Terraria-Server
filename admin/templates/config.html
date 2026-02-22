@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Configuration - Terraria Admin{% endblock %}
+{% block title %}Configuration — Terraria Admin{% endblock %}
 
 {% block content %}
-<div class="header">
+<div class="page-header">
     <h2>Server Configuration</h2>
 </div>
 
-<form method="POST" action="{{ url_for('save_config') }}">
+<form method="POST" action="{{ url_for('config_bp.save_config') }}">
     <div class="grid grid-2">
         <div class="card">
             <div class="card-title">World Settings</div>
@@ -59,7 +59,7 @@
             </div>
 
             <div class="form-group">
-                <label>MOTD (Message of the Day)</label>
+                <label>MOTD</label>
                 <input type="text" name="motd"
                        value="{{ server_config.get('motd', '') }}"
                        placeholder="Leave empty for vanilla experience">
@@ -69,7 +69,7 @@
 
     <div class="card">
         <button type="submit" class="btn btn-success">Save Configuration</button>
-        <span style="color: var(--text-muted); margin-left: 15px;">
+        <span style="color:var(--text-muted); margin-left:15px; font-size:0.875rem;">
             Server restart required for changes to take effect
         </span>
     </div>
@@ -78,7 +78,7 @@
 {% if server_type == 'tshock' %}
 <div class="card">
     <div class="card-title">TShock Settings (Read Only)</div>
-    <p style="color: var(--text-muted); margin-bottom: 15px;">
+    <p style="color:var(--text-muted); margin-bottom:15px;">
         These settings are from tshock/config.json. Edit the file directly on the server for advanced configuration.
     </p>
     <table class="table">
@@ -122,7 +122,7 @@
     <table class="table">
         <tr>
             <td>Mod management</td>
-            <td><a href="{{ url_for('mods') }}" class="btn btn-primary btn-sm">Open Mods Page</a></td>
+            <td><a href="{{ url_for('mods.mods') }}" class="btn btn-primary btn-sm">Open Mods Page</a></td>
         </tr>
         <tr>
             <td>Server communication</td>
@@ -130,7 +130,7 @@
         </tr>
         <tr>
             <td>Player requirements</td>
-            <td style="color: var(--text-muted);">Players must have tModLoader + same mods installed</td>
+            <td style="color:var(--text-muted);">Players must have tModLoader + same mods installed</td>
         </tr>
         <tr>
             <td>Auto Save</td>
@@ -148,13 +148,13 @@
             <td>
                 {% if version.server_type == 'tmodloader' %}
                     <span class="badge badge-success">tModLoader</span>
-                    <span style="color: var(--text-muted); margin-left: 10px;">Terraria 1.4.4.x</span>
+                    <span style="color:var(--text-muted); margin-left:10px;">Terraria 1.4.4.x</span>
                 {% elif version.server_type == 'tshock' %}
                     <span class="badge badge-success">TShock</span>
-                    <span style="color: var(--text-muted); margin-left: 10px;">Terraria 1.4.4.9</span>
+                    <span style="color:var(--text-muted); margin-left:10px;">Terraria 1.4.4.9</span>
                 {% else %}
                     <span class="badge badge-warning">Vanilla</span>
-                    <span style="color: var(--text-muted); margin-left: 10px;">Latest Terraria</span>
+                    <span style="color:var(--text-muted); margin-left:10px;">Latest Terraria</span>
                 {% endif %}
             </td>
         </tr>
@@ -167,21 +167,21 @@
             <td>
                 <code>{{ version.latest }}</code>
                 {% if version.update_available %}
-                    <span class="badge badge-warning" style="margin-left: 10px;">Update Available</span>
+                    <span class="badge badge-warning" style="margin-left:10px;">Update Available</span>
                 {% endif %}
             </td>
         </tr>
     </table>
-    <div style="margin-top: 15px;" class="btn-group">
+    <div style="margin-top:15px;" class="btn-group">
         {% if version.server_type == 'tmodloader' %}
-        <form method="POST" action="{{ url_for('update_tmodloader') }}" class="inline-form"
+        <form method="POST" action="{{ url_for('config_bp.update_tmodloader_route') }}" class="inline-form"
               onsubmit="return confirm('Update tModLoader? Server will restart. Continue?');">
             <button type="submit" class="btn {{ 'btn-warning' if version.update_available else 'btn-primary' }}">
                 {{ 'Update tModLoader →' + version.latest if version.update_available else 'Check & Update tModLoader' }}
             </button>
         </form>
         {% else %}
-        <form method="POST" action="{{ url_for('update_server') }}" class="inline-form"
+        <form method="POST" action="{{ url_for('config_bp.update_server') }}" class="inline-form"
               onsubmit="return confirm('This will update the server and restart. Continue?');">
             <button type="submit" class="btn {{ 'btn-warning' if version.update_available else 'btn-primary' }}">
                 {{ 'Update Now' if version.update_available else 'Force Update' }}
@@ -190,10 +190,10 @@
         {% endif %}
         {% if version.server_type == 'tmodloader' %}
         <a href="https://github.com/tModLoader/tModLoader/releases/latest" target="_blank" rel="noopener"
-           class="btn btn-primary">Changelog ↗</a>
+           class="btn btn-ghost">Changelog ↗</a>
         {% endif %}
     </div>
-    <p style="margin-top: 15px; color: var(--text-muted); font-size: 0.9rem;">
+    <p style="margin-top:15px; color:var(--text-muted); font-size:0.875rem;">
         Switch server type via SSH:
         <code>sudo /opt/terraria/install.sh --tmodloader</code>
         | <code>--tshock</code>
@@ -203,18 +203,16 @@
 
 <div class="card">
     <div class="card-title">Connection Info</div>
-    <p>Players can connect to: <code style="background: var(--bg-input); padding: 5px 10px; border-radius: 4px;">
-        your-server-ip:{{ server_config.get('port', '7777') }}
-    </code></p>
+    <p>Players can connect to: <code>your-server-ip:{{ server_config.get('port', '7777') }}</code></p>
 </div>
 
 <div class="card">
     <div class="card-title">Discord Notifications</div>
-    <p style="color: var(--text-muted); margin-bottom: 15px; font-size: 0.9rem;">
+    <p style="color:var(--text-muted); margin-bottom:15px; font-size:0.875rem;">
         Send notifications to a Discord channel via webhook.
         Create a webhook in your Discord server: Channel Settings → Integrations → Webhooks.
     </p>
-    <form method="POST" action="{{ url_for('discord_config_save') }}">
+    <form method="POST" action="{{ url_for('config_bp.discord_config_save') }}">
         <div class="form-group">
             <label>Webhook URL</label>
             <input type="url" name="webhook_url"
@@ -255,8 +253,8 @@
             <button type="submit" class="btn btn-success">Save Discord Settings</button>
         </div>
     </form>
-    <form method="POST" action="{{ url_for('discord_test') }}" style="margin-top:10px;" class="inline-form">
-        <button type="submit" class="btn btn-primary">Send Test Notification</button>
+    <form method="POST" action="{{ url_for('config_bp.discord_test') }}" style="margin-top:10px;" class="inline-form">
+        <button type="submit" class="btn btn-ghost">Send Test Notification</button>
     </form>
 </div>
 {% endblock %}

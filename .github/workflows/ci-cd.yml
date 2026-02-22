@@ -1,0 +1,134 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "admin/**"
+      - ".github/workflows/ci-cd.yml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "admin/**"
+
+env:
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/terraria-admin
+
+jobs:
+  # ── Lint / syntax check ───────────────────────────────────────────────────
+  lint:
+    name: Syntax check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: admin/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check imports
+        run: |
+          python - <<'EOF'
+          import sys, os
+          # Avoid triggering bootstrap_admins / background threads
+          os.environ.setdefault("SECRET_KEY", "ci-test-key")
+          os.environ.setdefault("ADMIN_FILE", "/tmp/admins.json")
+          os.environ.setdefault("SERVER_CONFIG", "/tmp/server.ini")
+          os.environ.setdefault("WORLD_DIR", "/tmp/worlds")
+          os.environ.setdefault("BACKUP_DIR", "/tmp/backups")
+          os.environ.setdefault("MOD_DIR", "/tmp/mods")
+
+          from terraria_admin import create_app
+          app = create_app()
+          rules = sorted(str(r) for r in app.url_map.iter_rules())
+          print(f"OK — {len(rules)} routes registered")
+          for r in rules:
+              print(" ", r)
+          EOF
+
+  # ── Build & push Docker image ─────────────────────────────────────────────
+  build-push:
+    name: Build & push image
+    needs: lint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'   # only on merge, not PRs
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./admin
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
+          cache-to:   type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+  # ── Deploy via SSH ────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to server
+    needs: build-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy docker-compose.yml to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host:     ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key:      ${{ secrets.SSH_PRIVATE_KEY }}
+          source:   "admin/docker-compose.yml"
+          target:   "~/terraria-admin"
+          strip_components: 1   # removes the "admin/" prefix on the remote
+
+      - name: Pull new image & recreate container
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key:      ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd ~/terraria-admin
+
+            # Export tag so compose picks the exact SHA image
+            export IMAGE_TAG=sha-${{ github.sha }}
+            export DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
+
+            docker compose pull
+            docker compose up -d --force-recreate
+            docker image prune -f

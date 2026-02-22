@@ -1,73 +1,112 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - Terraria Admin{% endblock %}
+{% block title %}Dashboard — Terraria Admin{% endblock %}
 
 {% block content %}
-<div class="header">
+<div class="page-header">
     <h2>Dashboard</h2>
     <div class="btn-group">
         {% if status.online %}
-            <form method="POST" action="{{ url_for('server_control', action='restart') }}" class="inline-form">
-                <button type="submit" class="btn btn-warning">Restart</button>
+            <form method="POST" action="{{ url_for('dashboard.server_control', action='restart') }}" class="inline-form">
+                <button type="submit" class="btn btn-warning">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/>
+                    </svg>
+                    Restart
+                </button>
             </form>
-            <form method="POST" action="{{ url_for('server_control', action='stop') }}" class="inline-form">
-                <button type="submit" class="btn btn-danger">Stop Server</button>
+            <form method="POST" action="{{ url_for('dashboard.server_control', action='stop') }}" class="inline-form">
+                <button type="submit" class="btn btn-danger">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z"/>
+                    </svg>
+                    Stop Server
+                </button>
             </form>
         {% else %}
-            <form method="POST" action="{{ url_for('server_control', action='start') }}" class="inline-form">
-                <button type="submit" class="btn btn-success">Start Server</button>
+            <form method="POST" action="{{ url_for('dashboard.server_control', action='start') }}" class="inline-form">
+                <button type="submit" class="btn btn-success">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/>
+                    </svg>
+                    Start Server
+                </button>
             </form>
         {% endif %}
     </div>
 </div>
 
-<div class="card">
-    <div class="card-title">Server Status</div>
-    <div style="display: flex; align-items: center; margin-bottom: 20px;">
-        <span class="status-dot {{ 'online' if status.online else 'offline' }}"></span>
-        <span style="font-size: 1.2rem; font-weight: 500;">
-            {{ 'Online' if status.online else 'Offline' }}
-        </span>
-        {% if status.server_type == 'tmodloader' %}
-            <span class="badge badge-success" style="margin-left: 15px;">tModLoader</span>
-        {% elif status.server_type == 'tshock' %}
-            <span class="badge badge-success" style="margin-left: 15px;">TShock</span>
-        {% else %}
-            <span class="badge badge-warning" style="margin-left: 15px;">Vanilla</span>
-        {% endif %}
-        {% if status.version %}
-            <span class="badge badge-success" style="margin-left: 10px;">{{ status.version }}</span>
+<!-- Hero status banner -->
+<div class="card" style="border-left: 4px solid {{ 'var(--success)' if status.online else 'var(--danger)' }};
+     background-image: linear-gradient(135deg, {{ 'rgba(34,197,94,0.06)' if status.online else 'rgba(239,68,68,0.06)' }} 0%, transparent 60%);">
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:space-between;">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span class="status-dot {{ 'online' if status.online else 'offline' }}"></span>
+            <span style="font-size:1.15rem; font-weight:700;">
+                {{ 'Online' if status.online else 'Offline' }}
+            </span>
+            {% if status.server_type == 'tmodloader' %}
+                <span class="badge badge-info">tModLoader</span>
+            {% elif status.server_type == 'tshock' %}
+                <span class="badge badge-success">TShock</span>
+            {% else %}
+                <span class="badge badge-warning">Vanilla</span>
+            {% endif %}
+            {% if status.version %}
+                <span class="badge badge-info" style="font-family:var(--font-mono);">{{ status.version }}</span>
+            {% endif %}
+        </div>
+        {% if not status.online %}
+        <p style="color:var(--text-muted); font-size:0.875rem;">
+            {% if status.service and status.server_type == 'tmodloader' %}
+                Service running — screen session not detected. Server may still be loading…
+            {% elif status.service %}
+                Service running — REST API not responding. Server may be starting…
+            {% else %}
+                Server is stopped. Click "Start Server" to begin.
+            {% endif %}
+        </p>
         {% endif %}
     </div>
 
     {% if status.online %}
-    <div class="grid grid-4">
+    <div class="grid grid-4" style="margin-top:18px;">
         <div class="stat">
-            <div class="stat-value">{{ status.players }}</div>
-            <div class="stat-label">Players Online</div>
+            <div class="stat-icon">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/>
+                </svg>
+            </div>
+            <div class="stat-value" id="heroPlayers">{{ status.players }}</div>
+            <div class="stat-label">Players / {{ status.max_players }}</div>
         </div>
         <div class="stat">
-            <div class="stat-value">{{ status.max_players }}</div>
-            <div class="stat-label">Max Players</div>
-        </div>
-        <div class="stat">
-            <div class="stat-value">{{ status.port }}</div>
+            <div class="stat-icon">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
+                </svg>
+            </div>
+            <div class="stat-value">:{{ status.port }}</div>
             <div class="stat-label">Port</div>
         </div>
         <div class="stat">
-            <div class="stat-value" style="font-size: 1rem;">{{ status.world }}</div>
+            <div class="stat-icon">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M20.893 13.393l-1.135-1.135a2.252 2.252 0 01-.421-.585l-1.08-2.16a.414.414 0 00-.663-.107.827.827 0 01-.812.21l-1.273-.363a.89.89 0 00-.738 1.595l.587.39c.59.395.674 1.23.172 1.732l-.2.2c-.212.212-.33.498-.33.796v.41c0 .409-.11.809-.32 1.158l-1.315 2.191a2.11 2.11 0 01-1.81 1.025 1.055 1.055 0 01-1.055-1.055v-1.172c0-.92-.56-1.747-1.414-2.089l-.655-.261a2.25 2.25 0 01-1.383-2.46l.007-.042a2.25 2.25 0 01.29-.787l.09-.15a2.25 2.25 0 012.37-1.048l1.178.236a1.125 1.125 0 001.302-.795l.208-.73a1.125 1.125 0 00-.578-1.315l-.665-.332-.091.091a2.25 2.25 0 01-1.591.659h-.18c-.249 0-.487.1-.662.274a.931.931 0 01-1.458-1.137l1.411-2.353a2.25 2.25 0 00.286-.76m11.928 9.869A9 9 0 008.965 3.525m11.928 9.868A9 9 0 118.965 3.525"/>
+                </svg>
+            </div>
+            <div class="stat-value" style="font-size:1rem; word-break:break-all;">{{ status.world }}</div>
             <div class="stat-label">World</div>
         </div>
+        <div class="stat">
+            <div class="stat-icon">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <div class="stat-value" style="font-size:1.1rem;" id="heroUptime">{{ status.uptime or '—' }}</div>
+            <div class="stat-label">Uptime</div>
+        </div>
     </div>
-    {% else %}
-    <p style="color: var(--text-muted);">
-        {% if status.service and status.server_type == 'tmodloader' %}
-            Service is running but screen session not detected. Server might still be loading the world...
-        {% elif status.service %}
-            Service is running but REST API is not responding. Server might be starting up...
-        {% else %}
-            Server is stopped. Click "Start Server" to begin.
-        {% endif %}
-    </p>
     {% endif %}
 </div>
 
@@ -77,9 +116,12 @@
     <div class="grid grid-4" id="metricsGrid"></div>
 </div>
 
-<!-- Online players (auto-refreshed) -->
+<!-- Online players -->
 <div class="card" id="playersCard">
-    <div class="card-title">Online Players <span id="playerCount" style="color:var(--text-muted);"></span></div>
+    <div class="card-title">
+        Online Players
+        <span id="playerCount" style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;"></span>
+    </div>
     <div id="playersList">
         {% if status.online and players %}
         <table class="table">
@@ -89,7 +131,7 @@
                 <tr>
                     <td>{{ player.nickname }}</td>
                     <td>
-                        <form method="POST" action="{{ url_for('kick_player') }}" class="inline-form">
+                        <form method="POST" action="{{ url_for('players.kick_player') }}" class="inline-form">
                             <input type="hidden" name="player" value="{{ player.nickname }}">
                             <button type="submit" class="btn btn-danger btn-sm">Kick</button>
                         </form>
@@ -99,46 +141,58 @@
             </tbody>
         </table>
         {% elif status.online %}
-        <p style="color: var(--text-muted);">No players online</p>
+        <p style="color:var(--text-muted);">No players online</p>
         {% else %}
-        <p style="color: var(--text-muted);">Server is offline</p>
+        <p style="color:var(--text-muted);">Server is offline</p>
         {% endif %}
     </div>
 </div>
 
+<!-- Quick actions -->
 <div class="card">
     <div class="card-title">Quick Actions</div>
     <div class="btn-group">
-        <form method="POST" action="{{ url_for('save_world') }}" class="inline-form">
-            <button type="submit" class="btn btn-primary" {{ 'disabled' if not status.online }}>Save World</button>
+        <form method="POST" action="{{ url_for('world.save_world') }}" class="inline-form">
+            <button type="submit" class="btn btn-primary" {{ 'disabled' if not status.online }}>
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+                </svg>
+                Save World
+            </button>
         </form>
-        <a href="{{ url_for('world') }}" class="btn btn-primary">World Controls</a>
+        <a href="{{ url_for('world.world') }}" class="btn btn-ghost">World Controls</a>
         {% if status.server_type == 'tmodloader' %}
-        <a href="{{ url_for('mods') }}" class="btn btn-primary">Manage Mods</a>
+        <a href="{{ url_for('mods.mods') }}" class="btn btn-ghost">Manage Mods</a>
         {% endif %}
-        <a href="{{ url_for('backups') }}" class="btn btn-primary">Backups</a>
-        <a href="{{ url_for('logs') }}" class="btn btn-primary">Logs</a>
+        <a href="{{ url_for('backups.backups') }}" class="btn btn-ghost">Backups</a>
+        <a href="{{ url_for('console.console') }}" class="btn btn-ghost">Console</a>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 function updatePlayers() {
     fetch('/api/players')
         .then(r => r.json())
         .then(players => {
-            const count = document.getElementById('playerCount');
-            count.textContent = `(${players.length})`;
+            const countEl = document.getElementById('playerCount');
+            const heroEl  = document.getElementById('heroPlayers');
+            if (countEl) countEl.textContent = `(${players.length})`;
+            if (heroEl)  heroEl.textContent  = players.length;
             const list = document.getElementById('playersList');
             if (!players.length) {
                 list.innerHTML = '<p style="color:var(--text-muted)">No players online</p>';
                 return;
             }
-            let rows = players.map(p =>
-                `<tr><td>${p.nickname || p.name || ''}</td><td>
+            const rows = players.map(p =>
+                `<tr><td>${esc(p.nickname || p.name || '')}</td><td>
                  <form method="POST" action="/players/kick" class="inline-form">
-                   <input type="hidden" name="player" value="${p.nickname || p.name || ''}">
+                   <input type="hidden" name="player" value="${esc(p.nickname || p.name || '')}">
                    <button class="btn btn-danger btn-sm">Kick</button>
                  </form></td></tr>`
             ).join('');
@@ -156,13 +210,17 @@ function updateMetrics() {
             card.style.display = '';
             const grid = document.getElementById('metricsGrid');
             const items = [
-                { v: m.cpu_percent + '%', l: 'CPU' },
-                { v: `${m.ram_used_gb}/${m.ram_total_gb} GB`, l: `RAM ${m.ram_percent}%` },
-                { v: m.disk_used_gb != null ? `${m.disk_used_gb}/${m.disk_total_gb} GB` : '—', l: 'Disk' },
-                { v: m.server_ram_mb != null ? m.server_ram_mb + ' MB' : '—', l: 'Server RAM' },
+                { v: m.cpu_percent + '%',    l: 'CPU',  pct: m.cpu_percent },
+                { v: `${m.ram_used_gb} GB`,  l: `RAM — ${m.ram_percent}%`,  pct: m.ram_percent },
+                { v: m.disk_used_gb != null ? `${m.disk_used_gb} GB` : '—', l: 'Disk', pct: m.disk_percent },
+                { v: m.server_ram_mb != null ? m.server_ram_mb + ' MB' : '—', l: 'Server RAM', pct: null },
             ];
-            grid.innerHTML = items.map(i =>
-                `<div class="stat"><div class="stat-value" style="font-size:1.4rem">${i.v}</div><div class="stat-label">${i.l}</div></div>`
+            grid.innerHTML = items.map(i => `
+                <div class="stat">
+                    <div class="stat-value" style="font-size:1.4rem">${i.v}</div>
+                    <div class="stat-label">${i.l}</div>
+                    ${i.pct != null ? `<div class="stat-bar"><div class="stat-bar-fill" style="width:${Math.min(i.pct,100)}%"></div></div>` : ''}
+                </div>`
             ).join('');
         })
         .catch(() => {});
@@ -173,16 +231,18 @@ function updateStatus() {
         .then(r => r.json())
         .then(data => {
             const dot = document.querySelector('.status-dot');
-            dot.classList.toggle('online', !!data.online);
-            dot.classList.toggle('offline', !data.online);
+            if (dot) {
+                dot.classList.toggle('online',  !!data.online);
+                dot.classList.toggle('offline', !data.online);
+            }
         })
         .catch(() => {});
 }
 
 updateMetrics();
 updatePlayers();
-setInterval(updateStatus, 15000);
-setInterval(updatePlayers, 10000);
-setInterval(updateMetrics, 8000);
+setInterval(updateStatus,   15000);
+setInterval(updatePlayers,  10000);
+setInterval(updateMetrics,   8000);
 </script>
 {% endblock %}

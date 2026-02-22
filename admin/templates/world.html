@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}World - Terraria Admin{% endblock %}
+{% block title %}World — Terraria Admin{% endblock %}
 
 {% block content %}
-<div class="header">
+<div class="page-header">
     <h2>World Controls</h2>
     {% if status.online and status.server_type == 'tshock' %}
-    <form method="POST" action="{{ url_for('save_world') }}" class="inline-form">
+    <form method="POST" action="{{ url_for('world.save_world') }}" class="inline-form">
         <button type="submit" class="btn btn-success">Save World</button>
     </form>
     {% endif %}
@@ -15,13 +15,13 @@
 {% if worlds %}
 <div class="card">
     <div class="card-title">Switch World</div>
-    <p style="color: var(--text-muted); margin-bottom: 15px; font-size: 0.9rem;">
+    <p style="color:var(--text-muted); margin-bottom:15px; font-size:0.9rem;">
         Switch to an existing world file. Server will restart automatically.
         Current world: <strong>{{ status.world }}</strong>
     </p>
-    <form method="POST" action="{{ url_for('world_switch') }}">
-        <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;">
-            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+    <form method="POST" action="{{ url_for('world.world_switch') }}">
+        <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+            <div class="form-group" style="flex:1; margin-bottom:0;">
                 <label>Select World</label>
                 <select name="world_name">
                     {% for w in worlds %}
@@ -31,19 +31,20 @@
                     {% endfor %}
                 </select>
             </div>
-            <button type="submit" class="btn btn-primary" style="height: 42px;"
+            <button type="submit" class="btn btn-primary" style="height:42px;"
                     onclick="return confirm('Switch world and restart server?');">
-                Switch & Restart
+                Switch &amp; Restart
             </button>
         </div>
     </form>
 </div>
 {% endif %}
 
-<!-- New World Creation - always available -->
+<!-- New World Creation -->
 <div class="card">
     <div class="card-title">Create New World</div>
-    <form method="POST" action="{{ url_for('recreate_world') }}" onsubmit="return confirm('This will DELETE the current world and create a new one. Old world will be backed up. Continue?');">
+    <form method="POST" action="{{ url_for('world.recreate_world') }}"
+          onsubmit="return confirm('This will DELETE the current world and create a new one. Old world will be backed up. Continue?');">
         <div class="grid grid-3">
             <div class="form-group">
                 <label>World Name</label>
@@ -52,9 +53,9 @@
             <div class="form-group">
                 <label>Size</label>
                 <select name="size">
-                    <option value="1">Small (4200 x 1200)</option>
-                    <option value="2" selected>Medium (6400 x 1800)</option>
-                    <option value="3">Large (8400 x 2400)</option>
+                    <option value="1">Small (4200 × 1200)</option>
+                    <option value="2" selected>Medium (6400 × 1800)</option>
+                    <option value="3">Large (8400 × 2400)</option>
                 </select>
             </div>
             <div class="form-group">
@@ -67,24 +68,25 @@
                 </select>
             </div>
         </div>
-        <button type="submit" class="btn btn-danger">Create New World</button>
-        <span style="color: var(--text-muted); margin-left: 15px;">
-            Warning: Current world will be backed up and deleted
-        </span>
+        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+            <button type="submit" class="btn btn-danger">Create New World</button>
+            <span style="color:var(--text-muted); font-size:0.875rem;">
+                Warning: current world will be backed up and deleted
+            </span>
+        </div>
     </form>
 </div>
 
 {% if not status.online %}
 <div class="card">
-    <p style="color: var(--text-muted);">Server is offline. Start the server to access more controls.</p>
+    <p style="color:var(--text-muted);">Server is offline. Start the server to access more controls.</p>
 </div>
 
 {% elif status.server_type == 'tmodloader' %}
-<!-- tModLoader controls -->
 <div class="grid grid-2">
     <div class="card">
         <div class="card-title">Time Control</div>
-        <form method="POST" action="{{ url_for('set_time') }}">
+        <form method="POST" action="{{ url_for('world.set_time') }}">
             <div class="form-group">
                 <label>Set Time</label>
                 <select name="time">
@@ -100,7 +102,7 @@
 
     <div class="card">
         <div class="card-title">Broadcast Message</div>
-        <form method="POST" action="{{ url_for('broadcast') }}">
+        <form method="POST" action="{{ url_for('world.broadcast') }}">
             <div class="form-group">
                 <label>Message</label>
                 <input type="text" name="message" required placeholder="Message to all players">
@@ -112,9 +114,9 @@
 
 <div class="card">
     <div class="card-title">Save World</div>
-    <form method="POST" action="{{ url_for('save_world') }}">
+    <form method="POST" action="{{ url_for('world.save_world') }}">
         <button type="submit" class="btn btn-success">Save World Now</button>
-        <span style="color: var(--text-muted); margin-left: 15px; font-size: 0.9rem;">
+        <span style="color:var(--text-muted); margin-left:14px; font-size:0.875rem;">
             tModLoader also auto-saves periodically
         </span>
     </form>
@@ -122,11 +124,11 @@
 
 <div class="card">
     <div class="card-title">Execute Server Command</div>
-    <form method="POST" action="{{ url_for('run_command') }}">
+    <form method="POST" action="{{ url_for('world.run_command') }}">
         <div class="form-group">
             <label>Command (sent directly to server stdin)</label>
             <input type="text" name="command" required placeholder="e.g. players, save, dawn, kick PlayerName">
-            <small style="color: var(--text-muted); display: block; margin-top: 5px;">
+            <small style="color:var(--text-muted); display:block; margin-top:5px;">
                 Available: dawn, noon, dusk, midnight, save, players, say &lt;msg&gt;, kick &lt;name&gt;, ban &lt;name&gt;, exit
             </small>
         </div>
@@ -135,11 +137,10 @@
 </div>
 
 {% elif status.server_type == 'tshock' %}
-<!-- TShock controls -->
 <div class="grid grid-2">
     <div class="card">
         <div class="card-title">Time Control</div>
-        <form method="POST" action="{{ url_for('set_time') }}">
+        <form method="POST" action="{{ url_for('world.set_time') }}">
             <div class="form-group">
                 <label>Set Time</label>
                 <select name="time">
@@ -155,7 +156,7 @@
 
     <div class="card">
         <div class="card-title">Broadcast Message</div>
-        <form method="POST" action="{{ url_for('broadcast') }}">
+        <form method="POST" action="{{ url_for('world.broadcast') }}">
             <div class="form-group">
                 <label>Message</label>
                 <input type="text" name="message" required placeholder="Message to all players">
@@ -167,28 +168,28 @@
 
 <div class="card">
     <div class="card-title">Quick Commands</div>
-    <div class="btn-group" style="flex-wrap: wrap;">
-        <form method="POST" action="{{ url_for('run_command') }}" class="inline-form">
+    <div class="btn-group" style="flex-wrap:wrap;">
+        <form method="POST" action="{{ url_for('world.run_command') }}" class="inline-form">
             <input type="hidden" name="command" value="/blood">
             <button type="submit" class="btn btn-danger">Blood Moon</button>
         </form>
-        <form method="POST" action="{{ url_for('run_command') }}" class="inline-form">
+        <form method="POST" action="{{ url_for('world.run_command') }}" class="inline-form">
             <input type="hidden" name="command" value="/eclipse">
             <button type="submit" class="btn btn-danger">Solar Eclipse</button>
         </form>
-        <form method="POST" action="{{ url_for('run_command') }}" class="inline-form">
+        <form method="POST" action="{{ url_for('world.run_command') }}" class="inline-form">
             <input type="hidden" name="command" value="/invade goblins">
             <button type="submit" class="btn btn-warning">Goblin Invasion</button>
         </form>
-        <form method="POST" action="{{ url_for('run_command') }}" class="inline-form">
+        <form method="POST" action="{{ url_for('world.run_command') }}" class="inline-form">
             <input type="hidden" name="command" value="/invade pirates">
             <button type="submit" class="btn btn-warning">Pirate Invasion</button>
         </form>
-        <form method="POST" action="{{ url_for('run_command') }}" class="inline-form">
+        <form method="POST" action="{{ url_for('world.run_command') }}" class="inline-form">
             <input type="hidden" name="command" value="/rain">
             <button type="submit" class="btn btn-primary">Toggle Rain</button>
         </form>
-        <form method="POST" action="{{ url_for('butcher') }}" class="inline-form">
+        <form method="POST" action="{{ url_for('world.butcher') }}" class="inline-form">
             <button type="submit" class="btn btn-danger">Kill All Mobs</button>
         </form>
     </div>
@@ -196,11 +197,11 @@
 
 <div class="card">
     <div class="card-title">Execute Command</div>
-    <form method="POST" action="{{ url_for('run_command') }}">
+    <form method="POST" action="{{ url_for('world.run_command') }}">
         <div class="form-group">
             <label>TShock Command</label>
             <input type="text" name="command" required placeholder="/command args">
-            <small style="color: var(--text-muted); display: block; margin-top: 5px;">
+            <small style="color:var(--text-muted); display:block; margin-top:5px;">
                 Examples: /time day, /rain, /spawnmob zombie 10, /give playername item
             </small>
         </div>
@@ -209,7 +210,7 @@
 </div>
 
 <div class="card">
-    <div class="card-title">Common Commands Reference</div>
+    <div class="card-title">Command Reference</div>
     <table class="table">
         <tr><td><code>/time day|night|noon|midnight</code></td><td>Set world time</td></tr>
         <tr><td><code>/rain</code></td><td>Toggle rain</td></tr>
@@ -225,16 +226,14 @@
 </div>
 
 {% else %}
-<!-- Vanilla server - limited controls -->
 <div class="card">
     <div class="card-title">Vanilla Server</div>
-    <p style="color: var(--text-muted);">
+    <p style="color:var(--text-muted);">
         Vanilla server is running. In-game commands are not available via web interface.
     </p>
-    <p style="color: var(--text-muted); margin-top: 10px;">
+    <p style="color:var(--text-muted); margin-top:10px;">
         Use the "Create New World" form above to reset the world with different settings.
     </p>
 </div>
 {% endif %}
-
 {% endblock %}

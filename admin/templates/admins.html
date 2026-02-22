@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Admin Management - Terraria Admin{% endblock %}
+{% block title %}Admin Management — Terraria Admin{% endblock %}
 
 {% block content %}
-<div class="header">
+<div class="page-header">
     <h2>Admin Management</h2>
 </div>
 
@@ -31,11 +31,11 @@
                         {{ admin.role }}
                     </span>
                 </td>
-                <td style="color: var(--text-muted); font-size: 0.85rem;">{{ admin.created_at }}</td>
+                <td style="color:var(--text-muted); font-size:0.85rem;">{{ admin.created_at }}</td>
                 <td>
                     <div class="btn-group">
-                        <!-- Change role -->
-                        <form method="POST" action="{{ url_for('admins_role') }}" class="inline-form" style="display:inline-flex;gap:5px;align-items:center;">
+                        <form method="POST" action="{{ url_for('admins.admins_role') }}" class="inline-form"
+                              style="display:inline-flex;gap:5px;align-items:center;">
                             <input type="hidden" name="username" value="{{ admin.username }}">
                             <select name="role" style="padding:4px 8px;font-size:0.8rem;width:auto;">
                                 {% for role in roles %}
@@ -45,9 +45,8 @@
                             <button type="submit" class="btn btn-primary btn-sm">Set Role</button>
                         </form>
 
-                        <!-- Delete -->
                         {% if admin.username != current_user %}
-                        <form method="POST" action="{{ url_for('admins_delete') }}" class="inline-form"
+                        <form method="POST" action="{{ url_for('admins.admins_delete') }}" class="inline-form"
                               onsubmit="return confirm('Delete admin {{ admin.username }}?');">
                             <input type="hidden" name="username" value="{{ admin.username }}">
                             <button type="submit" class="btn btn-danger btn-sm">Delete</button>
@@ -64,7 +63,7 @@
 <div class="grid grid-2">
     <div class="card">
         <div class="card-title">Add New Admin</div>
-        <form method="POST" action="{{ url_for('admins_add') }}">
+        <form method="POST" action="{{ url_for('admins.admins_add') }}">
             <div class="form-group">
                 <label>Username</label>
                 <input type="text" name="username" required placeholder="username">
@@ -87,12 +86,14 @@
 
     <div class="card">
         <div class="card-title">Change Password</div>
-        <form method="POST" action="{{ url_for('admins_password') }}">
+        <form method="POST" action="{{ url_for('admins.admins_password') }}">
             <div class="form-group">
                 <label>Username</label>
                 <select name="username">
                     {% for admin in admins %}
-                    <option value="{{ admin.username }}" {{ 'selected' if admin.username == current_user }}>{{ admin.username }}</option>
+                    <option value="{{ admin.username }}" {{ 'selected' if admin.username == current_user }}>
+                        {{ admin.username }}
+                    </option>
                     {% endfor %}
                 </select>
             </div>
@@ -102,7 +103,7 @@
             </div>
             <button type="submit" class="btn btn-warning">Change Password</button>
         </form>
-        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 10px;">
+        <p style="color:var(--text-muted); font-size:0.85rem; margin-top:10px;">
             You can always change your own password. Superadmins can change any user's password.
         </p>
     </div>

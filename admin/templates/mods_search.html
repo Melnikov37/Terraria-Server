@@ -1,96 +1,84 @@
 {% extends "base.html" %}
-{% block title %}Find Mods - Terraria Admin{% endblock %}
+{% block title %}Find Mods — Terraria Admin{% endblock %}
 
 {% block content %}
-<div class="header">
-    <h2>Find & Install Mods</h2>
-    <a href="{{ url_for('mods') }}" class="btn btn-primary">← Back to Mods</a>
+<div class="page-header">
+    <h2>Find &amp; Install Mods</h2>
+    <a href="{{ url_for('mods.mods') }}" class="btn btn-ghost">← Back to Mods</a>
 </div>
 
-<!-- Install by Workshop ID -->
 <div class="card">
     <div class="card-title">Install by Workshop ID</div>
-    <p style="color: var(--text-muted); margin-bottom: 15px;">
+    <p style="color:var(--text-muted); margin-bottom:15px;">
         The server downloads the mod automatically via steamcmd. Find the ID in any Workshop URL.
     </p>
-    <form method="POST" action="{{ url_for('mods_workshop') }}">
-        <div style="display: flex; gap: 10px; align-items: flex-end;">
-            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+    <form method="POST" action="{{ url_for('mods.mods_workshop') }}">
+        <div style="display:flex; gap:10px; align-items:flex-end;">
+            <div class="form-group" style="flex:1; margin-bottom:0;">
                 <label>Workshop ID</label>
                 <input type="text" name="workshop_id" placeholder="e.g. 2824688072" pattern="\d+" required>
             </div>
-            <button type="submit" class="btn btn-success" style="height: 42px;">Download & Install</button>
+            <button type="submit" class="btn btn-success" style="height:42px;">Download &amp; Install</button>
         </div>
     </form>
 </div>
 
-<!-- Upload fallback -->
 <div class="card">
     <div class="card-title">Upload .tmod file</div>
-    <p style="color: var(--text-muted); margin-bottom: 15px;">
-        Already have a .tmod file? Upload it directly here.
-    </p>
-    <form method="POST" action="{{ url_for('mods_upload') }}" enctype="multipart/form-data">
-        <div style="display: flex; gap: 10px; align-items: flex-end;">
-            <div class="form-group" style="flex: 1; margin-bottom: 0;">
-                <input type="file" name="mod_file" accept=".tmod" required style="padding: 8px; cursor: pointer;">
+    <p style="color:var(--text-muted); margin-bottom:15px;">Already have a .tmod file? Upload it directly here.</p>
+    <form method="POST" action="{{ url_for('mods.mods_upload') }}" enctype="multipart/form-data">
+        <div style="display:flex; gap:10px; align-items:flex-end;">
+            <div class="form-group" style="flex:1; margin-bottom:0;">
+                <input type="file" name="mod_file" accept=".tmod" required style="padding:8px; cursor:pointer;">
             </div>
-            <button type="submit" class="btn btn-success" style="height: 42px;">Upload & Enable</button>
+            <button type="submit" class="btn btn-success" style="height:42px;">Upload &amp; Enable</button>
         </div>
     </form>
 </div>
 
-<!-- How to get mods -->
 <div class="card">
     <div class="card-title">How to get .tmod files</div>
-
-    <p style="color: var(--text-muted); margin-bottom: 20px;">
+    <p style="color:var(--text-muted); margin-bottom:20px;">
         tModLoader distributes mods via <strong>Steam Workshop</strong>. There are two ways to get mods onto the server:
     </p>
 
     <div class="grid grid-2">
-        <!-- Option 1: steamcmd -->
-        <div style="background: var(--bg-input); border-radius: 6px; padding: 16px;">
-            <div style="font-weight: 600; margin-bottom: 10px; color: var(--accent);">Option 1 — steamcmd (recommended)</div>
-            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 12px;">
-                Install steamcmd on the server and download mods directly. Each mod has a Workshop ID.
+        <div style="background:var(--bg-input); border-radius:var(--radius-sm); padding:16px;">
+            <div style="font-weight:600; margin-bottom:10px; color:var(--accent);">Option 1 — steamcmd (recommended)</div>
+            <p style="color:var(--text-muted); font-size:0.875rem; margin-bottom:12px;">
+                Install steamcmd on the server and download mods directly.
             </p>
-            <div style="background: var(--bg); border-radius: 4px; padding: 10px; font-family: monospace; font-size: 0.85rem; color: var(--text);">
+            <div style="background:var(--bg); border-radius:4px; padding:10px; font-family:var(--font-mono); font-size:0.82rem; color:var(--text);">
                 # Install steamcmd<br>
                 apt-get install steamcmd<br><br>
                 # Download a mod (example: Calamity)<br>
                 steamcmd +login anonymous \<br>
                 &nbsp;&nbsp;+workshop_download_item 1281930 2824688072 \<br>
-                &nbsp;&nbsp;+quit<br><br>
-                # .tmod file will be in:<br>
-                # ~/Steam/steamapps/workshop/content/1281930/&lt;id&gt;/
+                &nbsp;&nbsp;+quit
             </div>
         </div>
 
-        <!-- Option 2: client download -->
-        <div style="background: var(--bg-input); border-radius: 6px; padding: 16px;">
-            <div style="font-weight: 600; margin-bottom: 10px; color: var(--accent);">Option 2 — download on your PC</div>
-            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 12px;">
+        <div style="background:var(--bg-input); border-radius:var(--radius-sm); padding:16px;">
+            <div style="font-weight:600; margin-bottom:10px; color:var(--accent);">Option 2 — download on your PC</div>
+            <p style="color:var(--text-muted); font-size:0.875rem; margin-bottom:12px;">
                 Install the mod through tModLoader on your PC, then upload the .tmod file here.
             </p>
-            <ol style="color: var(--text-muted); font-size: 0.9rem; padding-left: 16px; line-height: 1.8;">
+            <ol style="color:var(--text-muted); font-size:0.875rem; padding-left:16px; line-height:1.8;">
                 <li>Open tModLoader → Mod Browser</li>
                 <li>Find and install the mod</li>
                 <li>Navigate to the Mods folder:<br>
-                    <code style="font-size: 0.8rem;">%AppData%\Terraria\tModLoader\Mods</code><br>
-                    <code style="font-size: 0.8rem;">~/.local/share/Terraria/tModLoader/Mods</code>
+                    <code style="font-size:0.78rem;">%AppData%\Terraria\tModLoader\Mods</code><br>
+                    <code style="font-size:0.78rem;">~/.local/share/Terraria/tModLoader/Mods</code>
                 </li>
-                <li>Copy the <code>.tmod</code> file</li>
-                <li>Upload it using the form above</li>
+                <li>Copy the <code>.tmod</code> file and upload it above</li>
             </ol>
         </div>
     </div>
 </div>
 
-<!-- Popular mods with Workshop IDs -->
 <div class="card">
     <div class="card-title">Popular Mods — Workshop IDs</div>
-    <p style="color: var(--text-muted); margin-bottom: 15px; font-size: 0.9rem;">
+    <p style="color:var(--text-muted); margin-bottom:15px; font-size:0.875rem;">
         Use these IDs with <code>steamcmd +workshop_download_item 1281930 &lt;ID&gt;</code>
     </p>
     <table class="table">
@@ -106,44 +94,43 @@
             <tr>
                 <td><strong>Calamity Mod</strong></td>
                 <td><code>2824688072</code></td>
-                <td style="color: var(--text-muted);">Large content mod — bosses, biomes, weapons</td>
+                <td style="color:var(--text-muted);">Large content mod — bosses, biomes, weapons</td>
                 <td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2824688072" target="_blank" rel="noopener">Workshop ↗</a></td>
             </tr>
             <tr>
                 <td><strong>Calamity Mod Music</strong></td>
                 <td><code>2824688266</code></td>
-                <td style="color: var(--text-muted);">Music pack for Calamity (recommended)</td>
+                <td style="color:var(--text-muted);">Music pack for Calamity (recommended)</td>
                 <td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2824688266" target="_blank" rel="noopener">Workshop ↗</a></td>
             </tr>
             <tr>
                 <td><strong>Thorium Mod</strong></td>
                 <td><code>2756794847</code></td>
-                <td style="color: var(--text-muted);">Content mod — classes, bosses, NPCs</td>
+                <td style="color:var(--text-muted);">Content mod — classes, bosses, NPCs</td>
                 <td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2756794847" target="_blank" rel="noopener">Workshop ↗</a></td>
             </tr>
             <tr>
                 <td><strong>Boss Checklist</strong></td>
                 <td><code>2756794864</code></td>
-                <td style="color: var(--text-muted);">Track which bosses you've defeated</td>
+                <td style="color:var(--text-muted);">Track which bosses you've defeated</td>
                 <td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2756794864" target="_blank" rel="noopener">Workshop ↗</a></td>
             </tr>
             <tr>
                 <td><strong>Recipe Browser</strong></td>
                 <td><code>2756794983</code></td>
-                <td style="color: var(--text-muted);">In-game recipe lookup</td>
+                <td style="color:var(--text-muted);">In-game recipe lookup</td>
                 <td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2756794983" target="_blank" rel="noopener">Workshop ↗</a></td>
             </tr>
             <tr>
                 <td><strong>Magic Storage</strong></td>
-                <td><code>2756794847</code></td>
-                <td style="color: var(--text-muted);">Centralized item storage system</td>
-                <td><a href="https://steamcommunity.com/app/1281930/workshop/" target="_blank" rel="noopener">Workshop ↗</a></td>
+                <td><code>2563309347</code></td>
+                <td style="color:var(--text-muted);">Centralized item storage system</td>
+                <td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2563309347" target="_blank" rel="noopener">Workshop ↗</a></td>
             </tr>
         </tbody>
     </table>
-    <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 12px;">
+    <p style="color:var(--text-muted); font-size:0.85rem; margin-top:12px;">
         Browse all mods: <a href="https://steamcommunity.com/app/1281930/workshop/" target="_blank" rel="noopener">Steam Workshop for tModLoader ↗</a>
     </p>
 </div>
-
 {% endblock %}

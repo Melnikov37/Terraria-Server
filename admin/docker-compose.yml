@@ -1,0 +1,31 @@
+services:
+  terraria-admin:
+    image: ${DOCKERHUB_USERNAME:-melnikov37}/terraria-admin:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    pid: host                        # allows reading host /proc for process detection
+    volumes:
+      # host screen sockets (for screen -S terraria -X stuff "...")
+      - /run/screen:/run/screen
+      # server files — adjust paths to match your actual server layout
+      - /opt/terraria:/opt/terraria
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - ADMIN_FILE=${ADMIN_FILE:-/opt/terraria/admin_users.json}
+      - SERVER_CONFIG=${SERVER_CONFIG:-/opt/terraria/server.ini}
+      - WORLD_DIR=${WORLD_DIR:-/opt/terraria/worlds}
+      - BACKUP_DIR=${BACKUP_DIR:-/opt/terraria/backups}
+      - MOD_DIR=${MOD_DIR:-/opt/terraria/tModLoader/Mods}
+      - SCREEN_NAME=${SCREEN_NAME:-terraria}
+      - SERVICE_NAME=${SERVICE_NAME:-terraria}
+      - SERVER_TYPE=${SERVER_TYPE:-tmodloader}
+      - TSHOCK_TOKEN=${TSHOCK_TOKEN:-}
+      - TSHOCK_HOST=${TSHOCK_HOST:-http://localhost:7878}
+      - DISCORD_CONFIG=${DISCORD_CONFIG:-/opt/terraria/discord.json}
+      - LOG_FILE=${LOG_FILE:-/opt/terraria/terraria.log}
+      - STEAMCMD_PATH=${STEAMCMD_PATH:-/usr/games/steamcmd}
+      - STEAMCMD_WORKSHOP_DIR=${STEAMCMD_WORKSHOP_DIR:-/root/Steam/steamapps/workshop}
+    # Run as same UID as the terraria server process so screen sockets are accessible.
+    # Change to match the user running the terraria server on the host.
+    user: "0:0"
