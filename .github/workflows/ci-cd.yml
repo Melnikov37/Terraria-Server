@@ -114,20 +114,18 @@ jobs:
 
       - name: Pull new image & recreate container
         uses: appleboy/ssh-action@v1.0.3
-        env:
-          SECRET_KEY:        ${{ secrets.SECRET_KEY }}
-          ADMIN_TOKEN:       ${{ secrets.ADMIN_TOKEN }}
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         with:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key:      ${{ secrets.SSH_PRIVATE_KEY }}
-          envs:     SECRET_KEY,ADMIN_TOKEN,DOCKERHUB_USERNAME
           script: |
             set -e
+            mkdir -p ~/terraria-admin
             cd ~/terraria-admin
-            printf 'SECRET_KEY=%s\nADMIN_TOKEN=%s\nDOCKERHUB_USERNAME=%s\n' \
-              "$SECRET_KEY" "$ADMIN_TOKEN" "$DOCKERHUB_USERNAME" > .env
+            printf '%s\n' \
+              'SECRET_KEY=${{ secrets.SECRET_KEY }}' \
+              'ADMIN_TOKEN=${{ secrets.ADMIN_TOKEN }}' \
+              'DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}' > .env
             docker compose pull
             docker compose up -d --force-recreate
             docker image prune -f
