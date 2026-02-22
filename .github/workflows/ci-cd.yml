@@ -10,6 +10,7 @@ on:
     branches: [main, master]
     paths:
       - "admin/**"
+  workflow_dispatch:
 
 env:
   IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/terraria-admin
