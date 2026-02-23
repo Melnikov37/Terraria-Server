@@ -99,17 +99,29 @@ def start_console_poller(app):
         if not log_file:
             return  # LOG_FILE not configured — nothing to tail
         last_pos = 0
+        last_inode = None
         while True:
             try:
                 if not _os.path.exists(log_file):
                     time.sleep(2)
                     continue
+
+                # Detect log rotation: new inode or file shrank (truncation).
+                try:
+                    st = _os.stat(log_file)
+                    current_inode = st.st_ino
+                    current_size  = st.st_size
+                except OSError:
+                    time.sleep(1)
+                    continue
+
+                if current_inode != last_inode or current_size < last_pos:
+                    # File was rotated or truncated — restart from beginning.
+                    last_pos = 0
+                    last_inode = current_inode
+
                 with open(log_file, 'r', errors='replace') as f:
-                    # If the file was rotated / recreated, start over
-                    try:
-                        f.seek(last_pos)
-                    except OSError:
-                        f.seek(0)
+                    f.seek(last_pos)
                     while True:
                         raw = f.readline()
                         if not raw:
@@ -125,6 +137,7 @@ def start_console_poller(app):
             except Exception as exc:
                 log.warning('File log poller error (retry in 2s): %s', exc)
                 last_pos = 0
+                last_inode = None
             time.sleep(0.5)
 
     threading.Thread(target=_docker_run, daemon=True, name='console-docker-poller').start()
