@@ -19,11 +19,13 @@ if [ -f /server/version.txt ]; then
     cp /server/version.txt "${TERRARIA_DIR}/.server_version"
 fi
 
-# Set up FIFO so the admin panel can write commands to server stdin
+# Set up FIFO so the admin panel can write commands to server stdin.
+# O_RDWR (exec 3<>"$FIFO") opens both ends at once — no blocking wait for a
+# paired reader/writer. fd 3 is then redirected to stdin (<&3) so commands
+# written by the admin panel arrive directly at the server's stdin without
+# any intermediate process (tail -f buffers and may drop data on some kernels).
 rm -f "$FIFO"
 mkfifo "$FIFO"
-# Open FIFO for read+write (O_RDWR) — does not block waiting for a reader,
-# unlike O_WRONLY which would hang indefinitely until someone opens the other end.
 exec 3<>"$FIFO"
 
 # Build server arguments.
@@ -74,11 +76,11 @@ fi
 if [ -f /server/tModLoader.dll ]; then
     echo "[terraria-entrypoint] Binary: dotnet /server/tModLoader.dll"
     cd /server
-    exec dotnet /server/tModLoader.dll -server "${ARGS[@]}" < <(tail -f "$FIFO")
+    exec dotnet /server/tModLoader.dll -server "${ARGS[@]}" <&3
 elif [ -f /server/tModLoaderServer ] && [ -x /server/tModLoaderServer ]; then
     echo "[terraria-entrypoint] Binary: /server/tModLoaderServer (native)"
-    exec /server/tModLoaderServer "${ARGS[@]}" < <(tail -f "$FIFO")
+    exec /server/tModLoaderServer "${ARGS[@]}" <&3
 else
     echo "[terraria-entrypoint] Binary: start-tModLoaderServer.sh (no tModLoader.dll found)"
-    exec bash /server/start-tModLoaderServer.sh "${ARGS[@]}" < <(tail -f "$FIFO")
+    exec bash /server/start-tModLoaderServer.sh "${ARGS[@]}" <&3
 fi
