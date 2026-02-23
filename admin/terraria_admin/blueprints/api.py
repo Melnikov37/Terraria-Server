@@ -164,7 +164,23 @@ def api_diag():
                     'tail -30 /root/.local/share/Terraria/tModLoader/Logs/server.log 2>/dev/null || echo "(log not found)"'
                 )
                 # Running processes — is tModLoader actually alive?
-                result['container']['processes'] = _exec('ps aux 2>/dev/null || ps -ef')
+                result['container']['processes'] = _exec('ps aux 2>/dev/null || ps -ef 2>/dev/null || echo "(ps not found)"')
+                # Process list via /proc (works even without ps binary)
+                result['container']['procs_proc'] = _exec(
+                    'for f in /proc/[0-9]*/cmdline; do '
+                    'pid=$(echo "$f" | grep -oE "[0-9]+"); '
+                    'cmd=$(cat "$f" 2>/dev/null | tr "\\0" " " | cut -c1-200); '
+                    '[ -n "$cmd" ] && echo "  PID $pid: $cmd"; '
+                    'done 2>/dev/null | head -30'
+                )
+                # dotnet runtime version — verify dotnet is available and working
+                result['container']['dotnet_version'] = _exec('dotnet --version 2>&1 || echo "(dotnet not found in PATH)"')
+                # ScriptCaller.sh — understand env/lib setup tModLoader needs before dotnet
+                result['container']['script_caller'] = _exec(
+                    'cat /server/LaunchUtils/ScriptCaller.sh 2>/dev/null '
+                    '|| cat /server/ScriptCaller.sh 2>/dev/null '
+                    '|| echo "(ScriptCaller.sh not found)"'
+                )
                 # Binary info — architecture mismatch causes immediate silent crash
                 result['container']['server_binary_info'] = _exec(
                     'echo "arch: $(uname -m)"; '

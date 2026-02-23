@@ -217,12 +217,21 @@ async function loadDiag() {
                 body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">start-tModLoaderServer.sh:</p>`;
                 body += pre(ct.start_script_head);
             }
-            if (ct.processes) {
+            if (ct.procs_proc) {
+                const pp = ct.procs_proc;
+                const tmodRunning = pp.includes('tModLoader') || pp.includes('dotnet') || pp.includes('tModLoader.dll');
+                body += kv('dotnet/tModLoader', badge(tmodRunning, ['Running ✓','NOT found in /proc — crashed?']));
+                body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">/proc process list:</p>`;
+                body += pre(pp || '(empty)');
+            } else if (ct.processes) {
                 const procs = ct.processes;
                 const tmodRunning = procs.includes('tModLoader') || procs.includes('dotnet');
                 body += kv('tModLoader process', badge(tmodRunning, ['Running','NOT running — may be crashing!']));
                 body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">All processes:</p>`;
                 body += pre(procs);
+            }
+            if (ct.dotnet_version) {
+                body += kv('dotnet --version', `<code>${ct.dotnet_version}</code>`);
             }
             if (ct.all_logs) {
                 body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">Log files found:</p>`;
@@ -230,6 +239,17 @@ async function loadDiag() {
             }
             html += `<div class="card" style="margin-top:16px"><div class="card-title">⚡ Process & Binary Info</div>${body}</div>`;
         }
+    }
+
+    // ── ScriptCaller.sh ────────────────────────────────────────────────────
+    if (d.container.script_caller) {
+        const sc = d.container.script_caller;
+        const notFound = sc.includes('not found');
+        html += `<div class="card" style="margin-top:16px">
+            <div class="card-title">📜 ScriptCaller.sh (env setup tModLoader requires)</div>
+            ${kv('Status', badge(!notFound, ['Found — check for LD_LIBRARY_PATH / tee pipe', 'Not found']))}
+            ${pre(sc)}
+        </div>`;
     }
 
     // ── Docker logs (raw) ──────────────────────────────────────────────────

@@ -68,5 +68,7 @@ fi
 echo "[terraria-entrypoint] Binary: ${BIN[*]}"
 
 # Run server with stdin fed from the FIFO.
-# Anything written to $FIFO by the admin panel goes to server's stdin as a command.
-tail -f "$FIFO" | "${BIN[@]}" "${ARGS[@]}"
+# Process substitution (<(...)) feeds FIFO content as stdin without putting the
+# server process inside a pipeline — its stdout stays directly on the container PTY.
+# With tty:true, .NET detects isatty(stdout)=true → line-buffered → logs appear instantly.
+exec "${BIN[@]}" "${ARGS[@]}" < <(tail -f "$FIFO")
