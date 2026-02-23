@@ -6,6 +6,21 @@
     <h2>Server Configuration</h2>
 </div>
 
+{% if is_default_secret %}
+<div style="background:var(--warning-bg);border:1px solid var(--warning);border-radius:var(--radius-md);
+            padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+         style="width:20px;height:20px;color:var(--warning);flex-shrink:0;">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+    </svg>
+    <span style="color:var(--warning);font-size:0.875rem;">
+        <strong>Security warning:</strong> SECRET_KEY is set to the default value.
+        Set a strong random key in your <code>.env</code> file: <code>SECRET_KEY=&lt;random 32+ chars&gt;</code>
+    </span>
+</div>
+{% endif %}
+
 <form method="POST" action="{{ url_for('config_bp.save_config') }}">
     <div class="grid grid-2">
         <div class="card">
@@ -13,7 +28,10 @@
 
             <div class="form-group">
                 <label>World Name</label>
-                <input type="text" name="worldname" value="{{ server_config.get('worldname', 'World') }}">
+                <input type="text" name="worldname" value="{{ server_config.get('worldname', 'World') }}"
+                       pattern="[^/\\&lt;&gt;:\&quot;|?*.]+"
+                       title="World name cannot contain / \\ . : &lt; &gt; | ? *"
+                       required>
             </div>
 
             <div class="form-group">
