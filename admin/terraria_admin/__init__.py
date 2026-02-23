@@ -13,6 +13,7 @@ def create_app(config_class=Config):
     cfg = config_class()
     app.secret_key = cfg.SECRET_KEY
     app.config['SESSION_COOKIE_HTTPONLY'] = cfg.SESSION_COOKIE_HTTPONLY
+    app.config['SESSION_COOKIE_SAMESITE'] = getattr(cfg, 'SESSION_COOKIE_SAMESITE', 'Lax')
     app.config['PERMANENT_SESSION_LIFETIME'] = cfg.PERMANENT_SESSION_LIFETIME
     app.config['MAX_CONTENT_LENGTH'] = cfg.MAX_CONTENT_LENGTH
 

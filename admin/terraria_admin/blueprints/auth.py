@@ -12,6 +12,7 @@ def login():
         expected = current_app.terraria_config.ADMIN_TOKEN
         if expected and secrets.compare_digest(token, expected):
             session['logged_in'] = True
+            session.permanent = True  # apply PERMANENT_SESSION_LIFETIME timeout
             return redirect(url_for('dashboard.dashboard'))
         flash('Invalid token', 'error')
     return render_template('login.html')

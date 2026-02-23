@@ -1,7 +1,12 @@
 import os
+import time
 
 from .tshock import rest_call
 from .screen import is_screen_running, screen_cmd_output
+
+# Cache container status for 5 seconds to reduce Docker SDK connections
+_status_cache: dict = {}
+_STATUS_CACHE_TTL = 5
 
 
 def get_server_type(cfg):
@@ -13,16 +18,26 @@ def get_server_type(cfg):
 
 
 def _service_active(cfg):
-    """Return True if the terraria server Docker container is running."""
+    """Return True if the terraria server Docker container is running.
+
+    Caches the result for _STATUS_CACHE_TTL seconds to limit Docker SDK
+    connections when multiple pages poll /api/status frequently.
+    """
     import docker
+    cache_key = cfg.SERVER_CONTAINER
+    cached = _status_cache.get(cache_key)
+    if cached and (time.monotonic() - cached['ts']) < _STATUS_CACHE_TTL:
+        return cached['running']
     client = docker.from_env()
     try:
         container = client.containers.get(cfg.SERVER_CONTAINER)
-        return container.status == 'running'
+        running = container.status == 'running'
     except Exception:
-        return False
+        running = False
     finally:
         client.close()
+    _status_cache[cache_key] = {'running': running, 'ts': time.monotonic()}
+    return running
 
 
 def container_action(action, cfg):
