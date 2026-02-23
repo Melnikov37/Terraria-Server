@@ -20,9 +20,11 @@ class TestWorldRoutes:
         assert r.status_code == 302
 
     def test_broadcast_empty_message_rejected(self, auth_client):
-        r = auth_client.post('/world/broadcast',
-                             data={'message': ''},
-                             follow_redirects=True)
+        with patch('terraria_admin.blueprints.world.get_server_status', return_value={'online': False}), \
+             patch('terraria_admin.services.world.list_worlds', return_value=[]):
+            r = auth_client.post('/world/broadcast',
+                                 data={'message': ''},
+                                 follow_redirects=True)
         assert r.status_code == 200
         assert b'cannot be empty' in r.data.lower()
 
@@ -39,9 +41,11 @@ class TestWorldRoutes:
         assert 'Hello world!' in cmd
 
     def test_run_command_empty_rejected(self, auth_client):
-        r = auth_client.post('/world/command',
-                             data={'command': ''},
-                             follow_redirects=True)
+        with patch('terraria_admin.blueprints.world.get_server_status', return_value={'online': False}), \
+             patch('terraria_admin.services.world.list_worlds', return_value=[]):
+            r = auth_client.post('/world/command',
+                                 data={'command': ''},
+                                 follow_redirects=True)
         assert r.status_code == 200
         assert b'cannot be empty' in r.data.lower()
 
@@ -62,21 +66,27 @@ class TestWorldRoutes:
         assert mock_send.call_args[0][0] == 'save'
 
     def test_butcher_tmodloader_returns_error(self, auth_client):
-        r = auth_client.post('/world/butcher', follow_redirects=True)
+        with patch('terraria_admin.blueprints.world.get_server_status', return_value={'online': False}), \
+             patch('terraria_admin.services.world.list_worlds', return_value=[]):
+            r = auth_client.post('/world/butcher', follow_redirects=True)
         assert r.status_code == 200
         assert b'only available for TShock' in r.data
 
     def test_world_switch_traversal_rejected(self, auth_client):
-        r = auth_client.post('/world/switch',
-                             data={'world_name': '../../../etc/shadow'},
-                             follow_redirects=True)
+        with patch('terraria_admin.blueprints.world.get_server_status', return_value={'online': False}), \
+             patch('terraria_admin.services.world.list_worlds', return_value=[]):
+            r = auth_client.post('/world/switch',
+                                 data={'world_name': '../../../etc/shadow'},
+                                 follow_redirects=True)
         assert r.status_code == 200
         assert b'Invalid world name' in r.data
 
     def test_world_switch_nonexistent_world(self, auth_client):
-        r = auth_client.post('/world/switch',
-                             data={'world_name': 'DoesNotExist'},
-                             follow_redirects=True)
+        with patch('terraria_admin.blueprints.world.get_server_status', return_value={'online': False}), \
+             patch('terraria_admin.services.world.list_worlds', return_value=[]):
+            r = auth_client.post('/world/switch',
+                                 data={'world_name': 'DoesNotExist'},
+                                 follow_redirects=True)
         assert r.status_code == 200
         assert b'not found' in r.data.lower()
 
@@ -87,7 +97,9 @@ class TestWorldRoutes:
         with open(world_path, 'wb') as f:
             f.write(b'\x00' * 64)
 
-        with patch('terraria_admin.blueprints.world.container_action'):
+        with patch('terraria_admin.blueprints.world.container_action'), \
+             patch('terraria_admin.blueprints.world.get_server_status', return_value={'online': False}), \
+             patch('terraria_admin.services.world.list_worlds', return_value=[]):
             r = auth_client.post('/world/switch',
                                  data={'world_name': 'SwitchTest'},
                                  follow_redirects=True)
