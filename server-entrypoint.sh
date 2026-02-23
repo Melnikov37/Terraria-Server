@@ -14,6 +14,11 @@ mkdir -p "${TERRARIA_DIR}/worlds" \
          "${TERRARIA_DIR}/tModLoader/Mods" \
          "${TERRARIA_DIR}/backups"
 
+# Persist the baked-in tModLoader version so the admin panel can read it
+if [ -f /server/version.txt ]; then
+    cp /server/version.txt "${TERRARIA_DIR}/.server_version"
+fi
+
 # Set up FIFO so the admin panel can write commands to server stdin
 rm -f "$FIFO"
 mkfifo "$FIFO"

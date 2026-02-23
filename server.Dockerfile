@@ -20,7 +20,8 @@ RUN if [ "$TMODLOADER_VERSION" = "latest" ]; then \
     && unzip -q /tmp/tModLoader.zip -d /server \
     && rm /tmp/tModLoader.zip \
     && find /server -maxdepth 1 -name "*.sh" -exec chmod +x {} \; \
-    && (chmod +x /server/tModLoaderServer 2>/dev/null || true)
+    && (chmod +x /server/tModLoaderServer 2>/dev/null || true) \
+    && echo "${TMODLOADER_VERSION}" > /server/version.txt
 
 COPY server-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
