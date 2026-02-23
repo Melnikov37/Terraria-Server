@@ -49,15 +49,23 @@ fi
 
 echo "[terraria-entrypoint] Args: ${ARGS[*]}"
 
-# Detect how to run tModLoader
-if [ -f /server/tModLoaderServer ] && [ -x /server/tModLoaderServer ]; then
-    BIN=(/server/tModLoaderServer)
-elif [ -f /server/start-tModLoaderServer.sh ]; then
-    BIN=(bash /server/start-tModLoaderServer.sh)
-else
+# Detect how to run tModLoader.
+# Prefer dotnet tModLoader.dll directly: bypasses start-tModLoaderServer.sh →
+# ScriptCaller.sh which inserts an internal pipe (| tee Logs/server.log).
+# That pipe causes .NET to switch to block-buffered stdout (4 KB chunks), making
+# Docker logs empty until the buffer fills.  With tty:true + direct dotnet, .NET
+# sees a PTY on stdout and uses line-buffered mode → logs appear immediately.
+if [ -f /server/tModLoader.dll ]; then
+    cd /server
     BIN=(dotnet /server/tModLoader.dll)
     ARGS=("-server" "${ARGS[@]}")
+elif [ -f /server/tModLoaderServer ] && [ -x /server/tModLoaderServer ]; then
+    BIN=(/server/tModLoaderServer)
+else
+    BIN=(bash /server/start-tModLoaderServer.sh)
 fi
+
+echo "[terraria-entrypoint] Binary: ${BIN[*]}"
 
 # Run server with stdin fed from the FIFO.
 # Anything written to $FIFO by the admin panel goes to server's stdin as a command.
