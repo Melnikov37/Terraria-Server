@@ -594,18 +594,6 @@
     <!-- Toast container -->
     <div id="toast-container"></div>
 
-    <!-- Flash messages → toasts -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    <script>
-    (function() {
-        var msgs = {{ messages | tojson }};
-        msgs.forEach(function(m) { showToast(m[0], m[1]); });
-    })();
-    </script>
-    {% endif %}
-    {% endwith %}
-
     <script>
     function showToast(category, message) {
         var container = document.getElementById('toast-container');
@@ -636,6 +624,18 @@
         document.getElementById('sidebarOverlay').classList.remove('open');
     }
     </script>
+
+    <!-- Flash messages → toasts (separate block so showToast is already defined) -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <script>
+    (function() {
+        var msgs = {{ messages | tojson }};
+        msgs.forEach(function(m) { showToast(m[0], m[1]); });
+    })();
+    </script>
+    {% endif %}
+    {% endwith %}
 
     {% block scripts %}{% endblock %}
 </body>
