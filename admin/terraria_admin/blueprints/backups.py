@@ -111,7 +111,17 @@ def backups_download(backup_name):
         flash('Backup not found', 'error')
         return redirect(url_for('backups.backups'))
     try:
+        from flask import after_this_request
         tmp_dir = tempfile.mkdtemp()
+
+        @after_this_request
+        def _cleanup(response, _d=tmp_dir):
+            try:
+                shutil.rmtree(_d, ignore_errors=True)
+            except Exception:
+                pass
+            return response
+
         zip_base = os.path.join(tmp_dir, backup_name)
         zip_path = shutil.make_archive(zip_base, 'zip', backup_path)
         return send_file(
