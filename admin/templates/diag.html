@@ -201,6 +201,37 @@ async function loadDiag() {
 
     html += '</div>';
 
+    // ── Process list + binary info ────────────────────────────────────────
+    {
+        const ct = d.container;
+        if (ct.processes || ct.server_binary_info) {
+            let body = '';
+            if (ct.server_binary_info) {
+                const bi = ct.server_binary_info || '';
+                const archMismatch = bi.includes('x86') && bi.includes('aarch') ||
+                                     bi.includes('aarch') && bi.includes('x86');
+                body += kv('Binary', badge(!archMismatch, ['OK','Possible arch mismatch!']));
+                body += pre(bi);
+            }
+            if (ct.start_script_head) {
+                body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">start-tModLoaderServer.sh:</p>`;
+                body += pre(ct.start_script_head);
+            }
+            if (ct.processes) {
+                const procs = ct.processes;
+                const tmodRunning = procs.includes('tModLoader') || procs.includes('dotnet');
+                body += kv('tModLoader process', badge(tmodRunning, ['Running','NOT running — may be crashing!']));
+                body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">All processes:</p>`;
+                body += pre(procs);
+            }
+            if (ct.all_logs) {
+                body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">Log files found:</p>`;
+                body += pre(ct.all_logs);
+            }
+            html += `<div class="card" style="margin-top:16px"><div class="card-title">⚡ Process & Binary Info</div>${body}</div>`;
+        }
+    }
+
     // ── Docker logs (raw) ──────────────────────────────────────────────────
     const dockerLines = (d.container.logs_last||[]);
     if (dockerLines.length > 0) {

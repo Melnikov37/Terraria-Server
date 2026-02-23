@@ -163,6 +163,22 @@ def api_diag():
                 result['container']['log_file_tail'] = _exec(
                     'tail -30 /root/.local/share/Terraria/tModLoader/Logs/server.log 2>/dev/null || echo "(log not found)"'
                 )
+                # Running processes — is tModLoader actually alive?
+                result['container']['processes'] = _exec('ps aux 2>/dev/null || ps -ef')
+                # Binary info — architecture mismatch causes immediate silent crash
+                result['container']['server_binary_info'] = _exec(
+                    'echo "arch: $(uname -m)"; '
+                    'file /server/tModLoaderServer 2>/dev/null || echo "no tModLoaderServer"; '
+                    'ls -lah /server/tModLoaderServer /server/tModLoader.dll /server/start-tModLoaderServer.sh 2>/dev/null'
+                )
+                # First 25 lines of start-tModLoaderServer.sh (official launcher)
+                result['container']['start_script_head'] = _exec(
+                    'head -25 /server/start-tModLoaderServer.sh 2>/dev/null || echo "(not found)"'
+                )
+                # All log files in /root/.local and /server dirs
+                result['container']['all_logs'] = _exec(
+                    'find /root/.local /server -name "*.log" -o -name "*.txt" 2>/dev/null | head -20 || echo "(none)"'
+                )
         except Exception as exc:
             result['container']['status'] = f'error: {exc}'
         finally:
