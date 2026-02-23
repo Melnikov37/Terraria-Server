@@ -43,13 +43,21 @@ def is_screen_running(cfg):
 
 
 def screen_cmd_output(cmd, cfg, wait=0.8):
-    """Send cmd to server stdin, wait, return lines added to console buffer since then."""
+    """Send cmd to server stdin, wait, return lines added to console buffer since then.
+
+    Uses console_seq (monotonic counter) instead of len(buffer) so that lines
+    are not missed when the buffer is full and old entries are evicted.
+    """
+    from .. import extensions
     from ..extensions import console_buffer, console_lock
     with console_lock:
-        before_len = len(console_buffer)
+        before_seq = extensions.console_seq
     if not screen_send(cmd, cfg):
         return ''
     time.sleep(wait)
     with console_lock:
-        new_lines = list(console_buffer)[before_len:]
-    return '\n'.join(new_lines)
+        buf = list(console_buffer)
+        seq = extensions.console_seq
+    buf_start = seq - len(buf)
+    offset = max(0, before_seq - buf_start)
+    return '\n'.join(buf[offset:])

@@ -1,9 +1,14 @@
 import os
+import time
 from datetime import datetime
 
 import requests
 
 from .server import get_server_type, _stored_version, container_action
+
+# Simple in-memory cache for version info to avoid hitting GitHub on every page load.
+_version_cache: dict = {}
+_VERSION_CACHE_TTL = 600  # seconds (10 minutes)
 
 
 def list_worlds(cfg):
@@ -27,35 +32,42 @@ def list_worlds(cfg):
 def get_version_info(cfg):
     server_type = get_server_type(cfg)
     current = _stored_version(cfg)
-    latest = 'unknown'
 
-    try:
-        if server_type == 'tshock':
-            resp = requests.get(
-                'https://api.github.com/repos/Pryaxis/TShock/releases/latest', timeout=5
-            )
-            if resp.ok:
-                latest = resp.json().get('tag_name', 'unknown')
-        elif server_type == 'tmodloader':
-            resp = requests.get(
-                'https://api.github.com/repos/tModLoader/tModLoader/releases/latest', timeout=5
-            )
-            if resp.ok:
-                latest = resp.json().get('tag_name', 'unknown')
-        else:
-            resp = requests.get(
-                'https://terraria.org/api/get/dedicated-servers-names', timeout=5
-            )
-            if resp.ok:
-                files = resp.json()
-                if files:
-                    import re
-                    match = re.search(r'(\d+)', files[0])
-                    if match:
-                        ver = match.group(1)
-                        latest = f"1.4.5.{ver[-1]}" if len(ver) == 4 else ver
-    except Exception:
-        pass
+    # Return cached result if still fresh
+    cache_key = server_type
+    cached = _version_cache.get(cache_key)
+    if cached and (time.monotonic() - cached['ts']) < _VERSION_CACHE_TTL:
+        latest = cached['latest']
+    else:
+        latest = 'unknown'
+        try:
+            if server_type == 'tshock':
+                resp = requests.get(
+                    'https://api.github.com/repos/Pryaxis/TShock/releases/latest', timeout=5
+                )
+                if resp.ok:
+                    latest = resp.json().get('tag_name', 'unknown')
+            elif server_type == 'tmodloader':
+                resp = requests.get(
+                    'https://api.github.com/repos/tModLoader/tModLoader/releases/latest', timeout=5
+                )
+                if resp.ok:
+                    latest = resp.json().get('tag_name', 'unknown')
+            else:
+                resp = requests.get(
+                    'https://terraria.org/api/get/dedicated-servers-names', timeout=5
+                )
+                if resp.ok:
+                    files = resp.json()
+                    if files:
+                        import re
+                        match = re.search(r'(\d+)', files[0])
+                        if match:
+                            ver = match.group(1)
+                            latest = f"1.4.5.{ver[-1]}" if len(ver) == 4 else ver
+        except Exception:
+            pass
+        _version_cache[cache_key] = {'latest': latest, 'ts': time.monotonic()}
 
     return {
         'current': current,
