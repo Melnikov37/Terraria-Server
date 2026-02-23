@@ -30,7 +30,6 @@ services:
     volumes:
       - /opt/terraria:/opt/terraria
       - /var/run/docker.sock:/var/run/docker.sock   # Docker SDK control
-      - /opt/steamcmd:/opt/steamcmd:ro              # steamcmd for Workshop mod downloads
     environment:
       - SECRET_KEY=${SECRET_KEY}
       - ADMIN_TOKEN=${ADMIN_TOKEN}

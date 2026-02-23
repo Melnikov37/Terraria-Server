@@ -1,10 +1,16 @@
 FROM python:3.11-slim
 
-# procps needed by psutil for host process inspection (pid: host)
+# procps for psutil; curl + lib32gcc-s1 for steamcmd (32-bit binary)
 RUN dpkg --add-architecture i386 \
     && apt-get update && apt-get install -y --no-install-recommends \
         procps \
+        curl \
         lib32gcc-s1 \
+    && mkdir -p /opt/steamcmd \
+    && curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \
+       | tar zxf - -C /opt/steamcmd \
+    && chmod +x /opt/steamcmd/steamcmd.sh \
+    && /opt/steamcmd/steamcmd.sh +quit || true \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
