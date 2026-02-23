@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask
+from flask import Flask, jsonify, render_template, request, session
 
 from .config import Config
 
@@ -40,6 +40,30 @@ def create_app(config_class=Config):
     app.register_blueprint(config_bp)
     app.register_blueprint(console_bp)
     app.register_blueprint(api_bp)
+
+    # Error handlers
+    @app.errorhandler(404)
+    def not_found(e):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Not found', 'status': 404}), 404
+        if session.get('logged_in'):
+            return render_template('error.html', code=404, message='Page not found'), 404
+        from flask import redirect, url_for
+        return redirect(url_for('auth.login'))
+
+    @app.errorhandler(500)
+    def server_error(e):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Internal server error', 'status': 500}), 500
+        return render_template('error.html', code=500, message='Internal server error'), 500
+
+    @app.errorhandler(413)
+    def too_large(e):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'File too large', 'status': 413}), 413
+        from flask import flash, redirect, url_for
+        flash('File is too large (max 256 MB)', 'error')
+        return redirect(request.referrer or url_for('dashboard.dashboard'))
 
     # Start background daemons only once.
     # Skip in TESTING mode (CI/pytest) to avoid Docker calls and thread leaks.
