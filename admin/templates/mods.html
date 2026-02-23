@@ -49,15 +49,85 @@
 
 <div class="card">
     <div class="card-title">Upload .tmod file manually</div>
-    <form method="POST" action="{{ url_for('mods.mods_upload') }}" enctype="multipart/form-data">
-        <div style="display:flex; gap:10px; align-items:flex-end;">
-            <div class="form-group" style="flex:1; margin-bottom:0;">
-                <input type="file" name="mod_file" accept=".tmod" required style="padding:8px; cursor:pointer;">
-            </div>
-            <button type="submit" class="btn btn-success" style="height:42px;">Upload &amp; Enable</button>
+    <form method="POST" action="{{ url_for('mods.mods_upload') }}" enctype="multipart/form-data" id="upload-form">
+        <label id="drop-zone" for="mod_file_input" style="
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            gap:10px; padding:28px 20px; border:2px dashed var(--border);
+            border-radius:var(--radius-md); cursor:pointer; transition:var(--transition);
+            background:var(--bg-input); text-align:center; user-select:none;">
+            <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="var(--text-muted)" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+            </svg>
+            <span id="drop-label" style="color:var(--text-muted); font-size:0.9rem;">
+                Drag &amp; drop a <code>.tmod</code> file here, or click to browse
+            </span>
+        </label>
+        <input type="file" name="mod_file" id="mod_file_input" accept=".tmod" required style="display:none;">
+        <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+            <button type="submit" class="btn btn-success">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3"/>
+                </svg>
+                Upload &amp; Enable
+            </button>
         </div>
     </form>
 </div>
+
+{% block scripts %}{{ super() if super is defined }}
+<script>
+(function() {
+    var zone = document.getElementById('drop-zone');
+    var input = document.getElementById('mod_file_input');
+    var label = document.getElementById('drop-label');
+
+    input.addEventListener('change', function() {
+        if (input.files.length) {
+            label.textContent = input.files[0].name;
+            label.style.color = 'var(--text)';
+            zone.style.borderColor = 'var(--accent)';
+        }
+    });
+
+    ['dragover', 'dragenter'].forEach(function(evt) {
+        zone.addEventListener(evt, function(e) {
+            e.preventDefault();
+            zone.style.borderColor = 'var(--accent)';
+            zone.style.background = 'var(--accent-glow)';
+        });
+    });
+
+    ['dragleave', 'dragend'].forEach(function(evt) {
+        zone.addEventListener(evt, function() {
+            zone.style.borderColor = 'var(--border)';
+            zone.style.background = 'var(--bg-input)';
+        });
+    });
+
+    zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        zone.style.borderColor = 'var(--border)';
+        zone.style.background = 'var(--bg-input)';
+        var file = e.dataTransfer.files[0];
+        if (!file) return;
+        if (!file.name.endsWith('.tmod')) {
+            label.textContent = 'Only .tmod files are allowed';
+            label.style.color = 'var(--danger)';
+            zone.style.borderColor = 'var(--danger)';
+            return;
+        }
+        var dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        label.textContent = file.name;
+        label.style.color = 'var(--text)';
+        zone.style.borderColor = 'var(--accent)';
+    });
+})();
+</script>
+{% endblock %}
 
 <div class="card">
     <div class="card-title">
