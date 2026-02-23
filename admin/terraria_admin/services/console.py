@@ -32,17 +32,25 @@ def start_console_poller(app):
                 import docker
                 client = docker.from_env()
                 container = client.containers.get(cfg.SERVER_CONTAINER)
-                for raw_line in container.logs(stream=True, follow=True, tail=100):
-                    line = ANSI_ESCAPE.sub(
-                        '', raw_line.decode('utf-8', errors='replace').rstrip()
+                # stdout=True, stderr=True are required — docker-py defaults both
+                # to False, which causes the Docker daemon to return no output.
+                for chunk in container.logs(
+                    stream=True, follow=True, tail=200,
+                    stdout=True, stderr=True,
+                ):
+                    # A single chunk may contain multiple newline-separated lines.
+                    chunk_text = ANSI_ESCAPE.sub(
+                        '', chunk.decode('utf-8', errors='replace')
                     )
-                    if not line:
-                        continue
-                    with console_lock:
-                        console_buffer.append(line)
-                        if len(console_buffer) > MAX_CONSOLE_LINES:
-                            del console_buffer[0]
-                    check_player_event(line, cfg, discord_notify)
+                    for line in chunk_text.splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        with console_lock:
+                            console_buffer.append(line)
+                            if len(console_buffer) > MAX_CONSOLE_LINES:
+                                del console_buffer[0]
+                        check_player_event(line, cfg, discord_notify)
             except Exception as exc:
                 log.warning('Console poller error (retry in 5s): %s', exc)
             finally:
