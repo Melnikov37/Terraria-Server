@@ -49,26 +49,22 @@ fi
 
 echo "[terraria-entrypoint] Args: ${ARGS[*]}"
 
-# Detect how to run tModLoader.
-# Prefer dotnet tModLoader.dll directly: bypasses start-tModLoaderServer.sh →
-# ScriptCaller.sh which inserts an internal pipe (| tee Logs/server.log).
-# That pipe causes .NET to switch to block-buffered stdout (4 KB chunks), making
-# Docker logs empty until the buffer fills.  With tty:true + direct dotnet, .NET
-# sees a PTY on stdout and uses line-buffered mode → logs appear immediately.
-if [ -f /server/tModLoader.dll ]; then
-    cd /server
-    BIN=(dotnet /server/tModLoader.dll)
-    ARGS=("-server" "${ARGS[@]}")
+# Launch order:
+# 1. start-tModLoaderServer.sh  — official launcher; calls ScriptCaller.sh which sets
+#    LD_LIBRARY_PATH for native libs before running dotnet.  Running dotnet directly
+#    without this env causes a silent immediate crash.
+#    Docker logs will be empty (ScriptCaller.sh pipes dotnet stdout through tee), but
+#    the admin panel reads logs from server.log via the file poller instead.
+# 2. tModLoaderServer native binary — if present (older releases).
+# 3. dotnet tModLoader.dll direct — last resort only.
+if [ -f /server/start-tModLoaderServer.sh ]; then
+    echo "[terraria-entrypoint] Binary: start-tModLoaderServer.sh"
+    exec bash /server/start-tModLoaderServer.sh "${ARGS[@]}" < <(tail -f "$FIFO")
 elif [ -f /server/tModLoaderServer ] && [ -x /server/tModLoaderServer ]; then
-    BIN=(/server/tModLoaderServer)
+    echo "[terraria-entrypoint] Binary: tModLoaderServer (native)"
+    exec /server/tModLoaderServer "${ARGS[@]}" < <(tail -f "$FIFO")
 else
-    BIN=(bash /server/start-tModLoaderServer.sh)
+    echo "[terraria-entrypoint] Binary: dotnet tModLoader.dll (fallback)"
+    cd /server
+    exec dotnet /server/tModLoader.dll -server "${ARGS[@]}" < <(tail -f "$FIFO")
 fi
-
-echo "[terraria-entrypoint] Binary: ${BIN[*]}"
-
-# Run server with stdin fed from the FIFO.
-# Process substitution (<(...)) feeds FIFO content as stdin without putting the
-# server process inside a pipeline — its stdout stays directly on the container PTY.
-# With tty:true, .NET detects isatty(stdout)=true → line-buffered → logs appear instantly.
-exec "${BIN[@]}" "${ARGS[@]}" < <(tail -f "$FIFO")
