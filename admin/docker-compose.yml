@@ -3,6 +3,11 @@ services:
     image: ${DOCKERHUB_USERNAME:-melnikov37}/terraria-server:${IMAGE_TAG:-latest}
     container_name: terraria-server
     restart: unless-stopped
+    # tty: true gives the container a pseudo-TTY.
+    # Without it, .NET's Console.Out is block-buffered (4 KB) when stdout is a pipe,
+    # so Docker logs stay empty until the buffer fills. With a TTY, .NET switches to
+    # line-buffered mode and every log line appears in Docker logs immediately.
+    tty: true
     ports:
       - "7777:7777/tcp"
       - "7777:7777/udp"
@@ -38,5 +43,7 @@ services:
       - SERVER_TYPE=${SERVER_TYPE:-tmodloader}
       - MODS_DIR=${MODS_DIR:-/opt/terraria/tModLoader/Mods}
       - DISCORD_CONFIG=${DISCORD_CONFIG:-/opt/terraria/discord.json}
-      - LOG_FILE=${LOG_FILE:-/opt/terraria/terraria.log}
+      # LOG_FILE intentionally omitted: tModLoader writes to stdout (Docker logs),
+      # not a file. The console poller fills the in-memory buffer from Docker logs,
+      # and /api/logs falls back to that buffer.
     user: "0:0"

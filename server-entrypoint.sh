@@ -25,11 +25,19 @@ mkfifo "$FIFO"
 # Open FIFO for writing from our side to keep it permanently open (prevents EOF on reader)
 exec 3>"$FIFO"
 
-# Build server arguments
-ARGS=(-port "$PORT" -maxplayers "$MAX_PLAYERS")
+# Build server arguments.
+# -worldpath ensures worlds are always saved to the shared volume (/opt/terraria/worlds/)
+# so the admin panel can list and switch them.
+ARGS=(-port "$PORT" -maxplayers "$MAX_PLAYERS" -worldpath "${TERRARIA_DIR}/worlds")
 
+SERVERCONFIG="${TERRARIA_DIR}/serverconfig.txt"
 WORLD_FILE="${TERRARIA_DIR}/worlds/${WORLD_NAME}.wld"
-if [ -n "$WORLD" ] && [ -f "$WORLD" ]; then
+
+if [ -f "$SERVERCONFIG" ]; then
+    # Admin panel has written a serverconfig (via world switch / recreate).
+    # Pass it to the server — it contains the world= path, difficulty, etc.
+    ARGS+=(-config "$SERVERCONFIG")
+elif [ -n "$WORLD" ] && [ -f "$WORLD" ]; then
     ARGS+=(-world "$WORLD")
 elif [ -f "$WORLD_FILE" ]; then
     ARGS+=(-world "$WORLD_FILE")
