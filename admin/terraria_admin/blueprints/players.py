@@ -24,8 +24,8 @@ def players():
 @login_required
 def kick_player():
     cfg = current_app.terraria_config
-    player = request.form.get('player', '').strip()
-    reason = request.form.get('reason', 'Kicked by admin')
+    player = request.form.get('player', '').strip()[:100]
+    reason = request.form.get('reason', 'Kicked by admin').strip()[:300] or 'Kicked by admin'
     if not player:
         flash('Player name is required', 'error')
         return redirect(url_for('players.players'))
@@ -48,8 +48,8 @@ def kick_player():
 @login_required
 def ban_player():
     cfg = current_app.terraria_config
-    player = request.form.get('player', '').strip()
-    reason = request.form.get('reason', 'Banned by admin')
+    player = request.form.get('player', '').strip()[:100]
+    reason = request.form.get('reason', 'Banned by admin').strip()[:300] or 'Banned by admin'
     if not player:
         flash('Player name is required', 'error')
         return redirect(url_for('players.players'))
