@@ -2,7 +2,7 @@
 import io
 import json
 import os
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -145,6 +145,42 @@ class TestModRoutes:
                              follow_redirects=True)
         assert r.status_code == 200
         assert b'not found' in r.data.lower()
+
+    def test_mods_workshop_steamcmd_not_found(self, auth_client):
+        """When steamcmd binary is absent, flash the install hint and redirect."""
+        with patch('terraria_admin.blueprints.mods.shutil.which', return_value=None):
+            r = auth_client.post('/mods/workshop',
+                                 data={'workshop_id': '2824688072'},
+                                 follow_redirects=True)
+        assert r.status_code == 200
+        assert b'steamcmd not found' in r.data.lower()
+        assert b'install.sh' in r.data
+
+    def test_mods_update_one_steamcmd_not_found(self, auth_client, app):
+        """mods_update_one flashes steamcmd error when binary is absent."""
+        cfg = app.terraria_config
+        os.makedirs(cfg.MODS_DIR, exist_ok=True)
+        # Create a tmod file and a meta entry so the route reaches the steamcmd check
+        mod_path = os.path.join(cfg.MODS_DIR, 'SomeMod.tmod')
+        with open(mod_path, 'wb') as f:
+            f.write(b'\x00' * 64)
+        from terraria_admin.services.mods import record_mod_installed
+        record_mod_installed('SomeMod', mod_path, cfg, workshop_id='2824688072')
+
+        with patch('terraria_admin.blueprints.mods.shutil.which', return_value=None):
+            r = auth_client.post('/mods/update',
+                                 data={'mod_name': 'SomeMod'},
+                                 follow_redirects=True)
+        assert r.status_code == 200
+        assert b'steamcmd not found' in r.data.lower()
+        os.remove(mod_path)
+
+    def test_mods_update_all_steamcmd_not_found(self, auth_client):
+        """mods_update_all flashes steamcmd error when binary is absent."""
+        with patch('terraria_admin.blueprints.mods.shutil.which', return_value=None):
+            r = auth_client.post('/mods/update_all', follow_redirects=True)
+        assert r.status_code == 200
+        assert b'steamcmd not found' in r.data.lower()
 
     def test_mods_workshop_non_numeric_id_rejected(self, auth_client):
         r = auth_client.post('/mods/workshop',

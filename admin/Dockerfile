@@ -1,8 +1,10 @@
 FROM python:3.11-slim
 
 # procps needed by psutil for host process inspection (pid: host)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN dpkg --add-architecture i386 \
+    && apt-get update && apt-get install -y --no-install-recommends \
         procps \
+        lib32gcc-s1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
