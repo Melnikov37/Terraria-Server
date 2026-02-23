@@ -96,6 +96,51 @@ class TestWorldRoutes:
 
         os.remove(world_path)
 
+    def test_recreate_world_writes_evil_and_seed(self, auth_client, app):
+        """recreate_world must write evil type and seed to serverconfig."""
+        cfg = app.terraria_config
+        os.makedirs(cfg.WORLDS_DIR, exist_ok=True)
+
+        with patch('terraria_admin.blueprints.world.container_action'), \
+             patch('terraria_admin.blueprints.world.time'):
+            r = auth_client.post('/world/recreate',
+                                 data={
+                                     'worldname': 'TestWorld',
+                                     'size': '2',
+                                     'difficulty': '1',
+                                     'evil': '2',
+                                     'seed': 'not the bees',
+                                 },
+                                 follow_redirects=False)
+        assert r.status_code == 302
+
+        with open(cfg.CONFIG_FILE) as f:
+            config = f.read()
+        assert 'evil=2' in config
+        assert 'seed=not the bees' in config
+
+    def test_recreate_world_omits_seed_when_blank(self, auth_client, app):
+        """When seed is blank, seed= line must NOT appear in serverconfig."""
+        cfg = app.terraria_config
+        os.makedirs(cfg.WORLDS_DIR, exist_ok=True)
+
+        with patch('terraria_admin.blueprints.world.container_action'), \
+             patch('terraria_admin.blueprints.world.time'):
+            r = auth_client.post('/world/recreate',
+                                 data={
+                                     'worldname': 'TestWorld2',
+                                     'size': '1',
+                                     'difficulty': '0',
+                                     'evil': '0',
+                                     'seed': '',
+                                 },
+                                 follow_redirects=False)
+        assert r.status_code == 302
+
+        with open(cfg.CONFIG_FILE) as f:
+            config = f.read()
+        assert 'seed=' not in config
+
     def test_set_time_tmodloader_sends_cmd(self, auth_client):
         with patch('terraria_admin.blueprints.world.screen_send', return_value=True) as mock_send:
             r = auth_client.post('/world/time',

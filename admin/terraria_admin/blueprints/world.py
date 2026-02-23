@@ -133,6 +133,8 @@ def recreate_world():
     worldname  = request.form.get('worldname', 'World')
     size       = request.form.get('size', '2')
     difficulty = request.form.get('difficulty', '0')
+    evil       = request.form.get('evil', '0')
+    seed       = request.form.get('seed', '').strip()
 
     try:
         try:
@@ -161,6 +163,8 @@ def recreate_world():
             f'autocreate={size}',
             f'worldname={worldname}',
             f'difficulty={difficulty}',
+            f'evil={evil}',
+            *([f'seed={seed}'] if seed else []),
             f'worldpath={cfg.TERRARIA_DIR}/worlds',
             'maxplayers=8',
             'port=7777',

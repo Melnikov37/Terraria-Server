@@ -67,6 +67,19 @@
                     <option value="3">Journey</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label>Evil Type</label>
+                <select name="evil">
+                    <option value="0">Random</option>
+                    <option value="1">Corruption</option>
+                    <option value="2">Crimson</option>
+                </select>
+            </div>
+            <div class="form-group" style="grid-column: span 2;">
+                <label>Seed <span style="color:var(--text-muted); font-weight:400; font-size:0.8rem; text-transform:none; letter-spacing:0;">(leave blank for random)</span></label>
+                <input type="text" name="seed" placeholder='e.g. 12345678 or "not the bees"'
+                       style="font-family:var(--font-mono);">
+            </div>
         </div>
         <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
             <button type="submit" class="btn btn-danger">Create New World</button>
