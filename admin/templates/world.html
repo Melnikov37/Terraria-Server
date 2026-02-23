@@ -11,34 +11,56 @@
     {% endif %}
 </div>
 
-<!-- Switch existing world -->
-{% if worlds %}
+<!-- Worlds list -->
 <div class="card">
-    <div class="card-title">Switch World</div>
-    <p style="color:var(--text-muted); margin-bottom:15px; font-size:0.9rem;">
-        Switch to an existing world file. Server will restart automatically.
-        Current world: <strong>{{ status.world }}</strong>
-    </p>
-    <form method="POST" action="{{ url_for('world.world_switch') }}">
-        <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
-            <div class="form-group" style="flex:1; margin-bottom:0;">
-                <label>Select World</label>
-                <select name="world_name">
-                    {% for w in worlds %}
-                    <option value="{{ w.name }}" {{ 'selected' if w.name == status.world }}>
-                        {{ w.name }} ({{ w.size_mb }} MB, {{ w.modified }})
-                    </option>
-                    {% endfor %}
-                </select>
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Worlds</span>
+        <span style="font-weight:400;font-size:0.85rem;color:var(--text-muted);">
+            {{ worlds|length }} world{{ 's' if worlds|length != 1 else '' }}
+        </span>
+    </div>
+    {% if worlds %}
+    <div style="display:flex;flex-direction:column;gap:8px;">
+        {% for w in worlds %}
+        {% set is_active = (w.name == status.world) %}
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;
+                    border-radius:var(--radius-md);
+                    background:{% if is_active %}var(--bg-elevated){% else %}var(--bg){% endif %};
+                    border:1px solid {% if is_active %}var(--success){% else %}var(--border){% endif %};">
+            <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:3px;">
+                    <strong style="font-size:1rem;">{{ w.name }}</strong>
+                    {% if is_active %}
+                    <span style="font-size:0.7rem;font-weight:700;padding:2px 8px;
+                                 border-radius:20px;background:var(--success-bg);
+                                 color:var(--success);letter-spacing:0.06em;text-transform:uppercase;">
+                        Active
+                    </span>
+                    {% endif %}
+                </div>
+                <div style="color:var(--text-muted);font-size:0.82rem;">
+                    {{ w.size_mb }} MB &middot; modified {{ w.modified }}
+                </div>
             </div>
-            <button type="submit" class="btn btn-primary" style="height:42px;"
-                    onclick="return confirm('Switch world and restart server?');">
-                Switch &amp; Restart
-            </button>
+            {% if not is_active %}
+            <form method="POST" action="{{ url_for('world.world_switch') }}" class="inline-form">
+                <input type="hidden" name="world_name" value="{{ w.name }}">
+                <button type="submit" class="btn btn-primary"
+                        style="height:34px;font-size:0.85rem;padding:0 14px;"
+                        onclick="return confirm('Switch to this world and restart the server?');">
+                    Switch &amp; Restart
+                </button>
+            </form>
+            {% endif %}
         </div>
-    </form>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color:var(--text-muted);text-align:center;padding:24px 0;margin:0;">
+        No world files found. Create a new world below.
+    </p>
+    {% endif %}
 </div>
-{% endif %}
 
 <!-- New World Creation -->
 <div class="card">
