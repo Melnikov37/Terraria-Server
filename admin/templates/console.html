@@ -7,6 +7,7 @@
     <div class="btn-group">
         <button id="btnFollow" class="btn btn-success" onclick="toggleFollow()">Follow ON</button>
         <button class="btn btn-ghost" onclick="clearDisplay()">Clear</button>
+        <span id="lineCounter" style="color:var(--text-muted);font-size:0.8rem;align-self:center;"></span>
     </div>
 </div>
 
@@ -28,12 +29,11 @@
 <div class="card">
     <div class="card-title">Send Command</div>
     <div style="display:flex; gap:10px;">
-        <input type="text" id="cmdInput" placeholder="e.g. players, save, dawn, say Hello" style="flex:1;"
-               onkeydown="if(event.key==='Enter') sendCmd()">
+        <input type="text" id="cmdInput" placeholder="e.g. players, save, dawn, say Hello" style="flex:1;" autocomplete="off">
         <button class="btn btn-primary" onclick="sendCmd()" style="height:42px;">Send</button>
     </div>
     <small style="color:var(--text-muted); display:block; margin-top:8px;">
-        Commands are sent to the server via screen stdin.
+        Commands are sent to the server via screen stdin. Use ↑/↓ to navigate history.
         Available: dawn, noon, dusk, midnight, save, players, say &lt;msg&gt;, kick &lt;name&gt;, ban &lt;name&gt;, exit
     </small>
 </div>
@@ -44,30 +44,40 @@
 const output = document.getElementById('output');
 let cursor = 0;
 let following = true;
+let totalLines = 0;
+
+// Command history
+const history = [];
+let historyIdx = -1;
+let historyDraft = '';
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 function colorLine(line) {
     const lo = line.toLowerCase();
-    if (lo.includes('error') || lo.includes('exception') || lo.includes('fatal') || lo.includes('fail')) {
-        return `<span style="color:var(--danger)">${escHtml(line)}</span>`;
-    }
-    if (lo.includes('warn')) {
-        return `<span style="color:var(--warning)">${escHtml(line)}</span>`;
-    }
-    if (lo.includes('has joined') || lo.includes('joined the game')) {
-        return `<span style="color:var(--success)">${escHtml(line)}</span>`;
-    }
-    if (lo.includes('has left') || lo.includes('disconnected')) {
-        return `<span style="color:var(--text-muted)">${escHtml(line)}</span>`;
-    }
-    return escHtml(line);
-}
-
-function escHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    let color = null;
+    if (lo.includes('error') || lo.includes('exception') || lo.includes('fatal') || lo.includes('fail')) color = 'var(--danger)';
+    else if (lo.includes('warn')) color = 'var(--warning)';
+    else if (lo.includes('has joined') || lo.includes('joined the game')) color = 'var(--success)';
+    else if (lo.includes('has left') || lo.includes('disconnected')) color = 'var(--text-muted)';
+    const safe = escHtml(line);
+    return color ? `<span style="color:${color}">${safe}</span>` : safe;
 }
 
 function appendLines(lines) {
-    output.innerHTML += lines.map(l => colorLine(l)).join('\n') + '\n';
+    // insertAdjacentHTML avoids full re-parse of existing DOM on every update
+    const html = lines.map(l => colorLine(l)).join('\n') + '\n';
+    output.insertAdjacentHTML('beforeend', html);
+    totalLines += lines.length;
+    const counter = document.getElementById('lineCounter');
+    if (counter) counter.textContent = `${totalLines} lines`;
+    if (following) output.scrollTop = output.scrollHeight;
+}
+
+function appendLocal(html) {
+    output.insertAdjacentHTML('beforeend', html + '\n');
     if (following) output.scrollTop = output.scrollHeight;
 }
 
@@ -93,6 +103,9 @@ function toggleFollow() {
 
 function clearDisplay() {
     output.innerHTML = '';
+    totalLines = 0;
+    const counter = document.getElementById('lineCounter');
+    if (counter) counter.textContent = '';
 }
 
 function sendCmd() {
@@ -100,6 +113,12 @@ function sendCmd() {
     const cmd = input.value.trim();
     if (!cmd) return;
     input.value = '';
+    historyIdx = -1;
+    historyDraft = '';
+    // Add to history (avoid duplicates at top)
+    if (history[0] !== cmd) history.unshift(cmd);
+    if (history.length > 50) history.pop();
+
     fetch('/api/console/send', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -108,14 +127,36 @@ function sendCmd() {
     .then(r => r.json())
     .then(data => {
         if (!data.ok) {
-            output.innerHTML += `<span style="color:var(--danger)">[error] ${escHtml(data.error || 'Send failed')}</span>\n`;
+            appendLocal(`<span style="color:var(--danger)">[error] ${escHtml(data.error || 'Send failed')}</span>`);
         } else {
-            output.innerHTML += `<span style="color:var(--accent)">&gt; ${escHtml(cmd)}</span>\n`;
-            if (following) output.scrollTop = output.scrollHeight;
+            appendLocal(`<span style="color:var(--accent)">&gt; ${escHtml(cmd)}</span>`);
         }
     })
     .catch(() => {});
 }
+
+document.getElementById('cmdInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { sendCmd(); return; }
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (historyIdx === -1) historyDraft = this.value;
+        if (historyIdx < history.length - 1) {
+            historyIdx++;
+            this.value = history[historyIdx];
+            this.setSelectionRange(this.value.length, this.value.length);
+        }
+    } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (historyIdx > 0) {
+            historyIdx--;
+            this.value = history[historyIdx];
+        } else if (historyIdx === 0) {
+            historyIdx = -1;
+            this.value = historyDraft;
+        }
+        this.setSelectionRange(this.value.length, this.value.length);
+    }
+});
 
 poll();
 setInterval(poll, 2000);
