@@ -22,8 +22,9 @@ fi
 # Set up FIFO so the admin panel can write commands to server stdin
 rm -f "$FIFO"
 mkfifo "$FIFO"
-# Open FIFO for writing from our side to keep it permanently open (prevents EOF on reader)
-exec 3>"$FIFO"
+# Open FIFO for read+write (O_RDWR) — does not block waiting for a reader,
+# unlike O_WRONLY which would hang indefinitely until someone opens the other end.
+exec 3<>"$FIFO"
 
 # Build server arguments.
 # -worldpath ensures worlds are always saved to the shared volume (/opt/terraria/worlds/)
@@ -49,22 +50,35 @@ fi
 
 echo "[terraria-entrypoint] Args: ${ARGS[*]}"
 
-# Launch order:
-# 1. start-tModLoaderServer.sh  — official launcher; calls ScriptCaller.sh which sets
-#    LD_LIBRARY_PATH for native libs before running dotnet.  Running dotnet directly
-#    without this env causes a silent immediate crash.
-#    Docker logs will be empty (ScriptCaller.sh pipes dotnet stdout through tee), but
-#    the admin panel reads logs from server.log via the file poller instead.
-# 2. tModLoaderServer native binary — if present (older releases).
-# 3. dotnet tModLoader.dll direct — last resort only.
-if [ -f /server/start-tModLoaderServer.sh ]; then
-    echo "[terraria-entrypoint] Binary: start-tModLoaderServer.sh"
-    exec bash /server/start-tModLoaderServer.sh "${ARGS[@]}" < <(tail -f "$FIFO")
-elif [ -f /server/tModLoaderServer ] && [ -x /server/tModLoaderServer ]; then
-    echo "[terraria-entrypoint] Binary: tModLoaderServer (native)"
-    exec /server/tModLoaderServer "${ARGS[@]}" < <(tail -f "$FIFO")
-else
-    echo "[terraria-entrypoint] Binary: dotnet tModLoader.dll (fallback)"
+# Source tModLoader's environment fix scripts before running dotnet.
+#
+# BashUtils.sh  — sets $_uname, $_arch, $root_dir used by EnvironmentFix.sh.
+# EnvironmentFix.sh — sets LD_LIBRARY_PATH for native libs in /server/Libraries,
+#                     fixes SDL/OpenAL env, etc. required for tModLoader native code.
+#
+# We intentionally skip ScriptCaller.sh to avoid its "download dotnet on crash" loop:
+# ScriptCaller.sh deletes $dotnet_dir whenever server.log is missing after a crash,
+# which causes it to re-download dotnet on every container restart — an infinite loop.
+# The system dotnet (from the base image) is sufficient to run tModLoader.dll.
+if [ -f /server/LaunchUtils/BashUtils.sh ]; then
+    _prev_dir="$PWD"
+    cd /server/LaunchUtils
+    set +e
+    . ./BashUtils.sh    2>/dev/null
+    . ./EnvironmentFix.sh 2>/dev/null
+    set -e
+    cd "$_prev_dir"
+    echo "[terraria-entrypoint] EnvironmentFix sourced (LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-not set})"
+fi
+
+if [ -f /server/tModLoader.dll ]; then
+    echo "[terraria-entrypoint] Binary: dotnet /server/tModLoader.dll"
     cd /server
     exec dotnet /server/tModLoader.dll -server "${ARGS[@]}" < <(tail -f "$FIFO")
+elif [ -f /server/tModLoaderServer ] && [ -x /server/tModLoaderServer ]; then
+    echo "[terraria-entrypoint] Binary: /server/tModLoaderServer (native)"
+    exec /server/tModLoaderServer "${ARGS[@]}" < <(tail -f "$FIFO")
+else
+    echo "[terraria-entrypoint] Binary: start-tModLoaderServer.sh (no tModLoader.dll found)"
+    exec bash /server/start-tModLoaderServer.sh "${ARGS[@]}" < <(tail -f "$FIFO")
 fi

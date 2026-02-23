@@ -241,13 +241,38 @@ async function loadDiag() {
         }
     }
 
+    // ── Launch / Natives logs (ScriptCaller crash output) ──────────────────
+    {
+        const ct = d.container;
+        const hasLaunch = ct.launch_log && !ct.launch_log.includes('not found');
+        const hasNative = ct.native_log && !ct.native_log.includes('not found');
+        if (hasLaunch || hasNative || ct.env_ld) {
+            let body = '';
+            if (ct.env_ld) {
+                const ldOk = ct.env_ld.includes('LD_LIBRARY_PATH=') && !ct.env_ld.includes('<not set>');
+                body += kv('LD_LIBRARY_PATH', badge(ldOk, ['Set ✓', 'NOT set — native libs may fail to load']));
+                body += pre(ct.env_ld);
+            }
+            if (hasLaunch) {
+                body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">Launch.log (dotnet install + startup):</p>`;
+                body += pre(ct.launch_log);
+            }
+            if (hasNative) {
+                const hasCrash = ct.native_log.includes('Exception') || ct.native_log.includes('Error') || ct.native_log.includes('fatal');
+                body += kv('Natives.log', badge(!hasCrash, ['Clean', 'Contains errors/exceptions!']));
+                body += pre(ct.native_log);
+            }
+            html += `<div class="card" style="margin-top:16px"><div class="card-title">🔥 Launch & Crash Logs</div>${body}</div>`;
+        }
+    }
+
     // ── ScriptCaller.sh ────────────────────────────────────────────────────
     if (d.container.script_caller) {
         const sc = d.container.script_caller;
         const notFound = sc.includes('not found');
         html += `<div class="card" style="margin-top:16px">
             <div class="card-title">📜 ScriptCaller.sh (env setup tModLoader requires)</div>
-            ${kv('Status', badge(!notFound, ['Found — check for LD_LIBRARY_PATH / tee pipe', 'Not found']))}
+            ${kv('Status', badge(!notFound, ['Found', 'Not found']))}
             ${pre(sc)}
         </div>`;
     }

@@ -195,6 +195,21 @@ def api_diag():
                 result['container']['all_logs'] = _exec(
                     'find /root/.local /server -name "*.log" -o -name "*.txt" 2>/dev/null | head -20 || echo "(none)"'
                 )
+                # ScriptCaller.sh launch log — contains dotnet install output and startup errors
+                result['container']['launch_log'] = _exec(
+                    'find /server -name "Launch.log" 2>/dev/null | head -1'
+                    ' | xargs tail -40 2>/dev/null || echo "(Launch.log not found)"'
+                )
+                # Natives.log — stderr from dotnet/tModLoader (crash stack traces go here)
+                result['container']['native_log'] = _exec(
+                    'find /server -name "Natives.log" 2>/dev/null | head -1'
+                    ' | xargs cat 2>/dev/null || echo "(Natives.log not found)"'
+                )
+                # LD_LIBRARY_PATH inside container after EnvironmentFix runs
+                result['container']['env_ld'] = _exec(
+                    'echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-<not set>}"; '
+                    'ls /server/Libraries/ 2>/dev/null | head -10 || echo "(no /server/Libraries)"'
+                )
         except Exception as exc:
             result['container']['status'] = f'error: {exc}'
         finally:
