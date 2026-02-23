@@ -89,6 +89,61 @@ def _read_logs(cfg, lines):
     return list(console_buffer)[-lines:]
 
 
+@bp.route('/api/diag')
+@login_required
+def api_diag():
+    """Diagnostic endpoint: Docker connection, container logs, worlds dir, config."""
+    cfg = current_app.terraria_config
+    result = {
+        'docker': {'connected': False, 'error': None},
+        'container': {'name': cfg.SERVER_CONTAINER, 'status': None, 'logs_last': []},
+        'console_buffer': {'size': 0, 'last': []},
+        'worlds': {'dir': cfg.WORLDS_DIR, 'exists': False, 'files': []},
+        'serverconfig': {'exists': False, 'content': None},
+    }
+
+    # Docker
+    try:
+        import docker
+        client = docker.from_env()
+        result['docker']['connected'] = True
+        try:
+            container = client.containers.get(cfg.SERVER_CONTAINER)
+            result['container']['status'] = container.status
+            raw = container.logs(tail=50, stdout=True, stderr=True)
+            lines = raw.decode('utf-8', errors='replace').splitlines()
+            result['container']['logs_last'] = lines[-50:]
+        except Exception as exc:
+            result['container']['status'] = f'error: {exc}'
+        finally:
+            client.close()
+    except Exception as exc:
+        result['docker']['error'] = str(exc)
+
+    # Console buffer
+    from ..extensions import console_buffer, console_lock
+    with console_lock:
+        buf = list(console_buffer)
+    result['console_buffer']['size'] = len(buf)
+    result['console_buffer']['last'] = buf[-20:]
+
+    # Worlds dir
+    import os
+    if os.path.isdir(cfg.WORLDS_DIR):
+        result['worlds']['exists'] = True
+        result['worlds']['files'] = sorted(os.listdir(cfg.WORLDS_DIR))
+
+    # Serverconfig
+    try:
+        with open(cfg.CONFIG_FILE) as f:
+            result['serverconfig']['exists'] = True
+            result['serverconfig']['content'] = f.read()
+    except Exception:
+        pass
+
+    return jsonify(result)
+
+
 @bp.route('/api/metrics')
 @login_required
 def api_metrics():
