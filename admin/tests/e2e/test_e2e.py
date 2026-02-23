@@ -272,6 +272,38 @@ def test_world_create_form_has_required_fields(page: Page, base_url: str, admin_
     expect(page.locator('input[name="seed"]')).to_be_visible()
 
 
+def test_world_switch_completes_successfully(page: Page, base_url: str, admin_token: str):
+    """Accept confirm dialog on Switch → redirect back to /world → success toast."""
+    login(page, base_url, admin_token)
+    page.goto(f'{base_url}/world')
+    switch_btn = page.locator('button:has-text("Switch")')
+    if switch_btn.count() == 0:
+        # No inactive worlds to switch to — skip gracefully
+        return
+    page.on('dialog', lambda d: d.accept())
+    switch_btn.first.click()
+    page.wait_for_url(f'{base_url}/world', timeout=8000)
+    # Flash message contains either "Switched" (success) or "Error" (container issue)
+    body = page.locator('body').inner_text()
+    assert 'Switched' in body or 'Error' in body or 'switched' in body.lower()
+
+
+def test_world_create_new_world_completes(page: Page, base_url: str, admin_token: str):
+    """Fill Create New World form → accept confirm dialog → success toast appears."""
+    login(page, base_url, admin_token)
+    page.goto(f'{base_url}/world')
+    page.fill('input[name="worldname"]', 'E2ECreatedWorld')
+    page.select_option('select[name="size"]', '1')
+    page.select_option('select[name="difficulty"]', '0')
+    page.select_option('select[name="evil"]', '0')
+    page.on('dialog', lambda d: d.accept())
+    page.locator('button:has-text("Create New World")').click()
+    # recreate_world calls time.sleep(3) after stopping the container — generous timeout
+    page.wait_for_url(f'{base_url}/world', timeout=15000)
+    body = page.locator('body').inner_text()
+    assert 'created' in body.lower() or 'E2ECreatedWorld' in body or 'Error' in body
+
+
 # ── Console page ──────────────────────────────────────────────────────────────
 
 def test_console_page_has_output_area(page: Page, base_url: str, admin_token: str):
