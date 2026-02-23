@@ -39,12 +39,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Check imports
+      - name: Check imports & routes
         run: |
           python - <<'EOF'
           import sys, os
           os.environ.setdefault("SECRET_KEY", "ci-test-key")
           os.environ.setdefault("TERRARIA_DIR", "/tmp/terraria")
+          os.environ.setdefault("TESTING", "1")
 
           from terraria_admin import create_app
           app = create_app()
@@ -54,10 +55,104 @@ jobs:
               print(" ", r)
           EOF
 
+  # ── Integration tests ─────────────────────────────────────────────────────
+  test:
+    name: Integration tests
+    needs: lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: admin/requirements-test.txt
+
+      - name: Install test dependencies
+        run: pip install -r requirements-test.txt
+
+      - name: Run integration tests
+        env:
+          SECRET_KEY: ci-test-key
+          ADMIN_TOKEN: ci-test-token
+          TERRARIA_DIR: /tmp/terraria-ci
+          SERVER_CONTAINER: terraria-server
+          SERVER_TYPE: tmodloader
+          TESTING: "1"
+        run: |
+          mkdir -p /tmp/terraria-ci/worlds /tmp/terraria-ci/backups /tmp/terraria-ci/Mods
+          # Create a minimal world file for backup tests
+          dd if=/dev/zero bs=128 count=1 > /tmp/terraria-ci/worlds/CIWorld.wld 2>/dev/null
+          pytest tests/ --ignore=tests/e2e \
+            --tb=short \
+            --cov=terraria_admin \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            -q
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: admin/coverage.xml
+
+  # ── E2E tests (Playwright) ────────────────────────────────────────────────
+  test-e2e:
+    name: E2E tests (Playwright)
+    needs: lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: admin/requirements-test.txt
+
+      - name: Install test dependencies
+        run: pip install -r requirements-test.txt
+
+      - name: Install Playwright browsers
+        run: playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        env:
+          SECRET_KEY: ci-test-key
+          ADMIN_TOKEN: ci-test-token
+          TERRARIA_DIR: /tmp/terraria-e2e
+          SERVER_CONTAINER: terraria-server
+          SERVER_TYPE: tmodloader
+          TESTING: "1"
+        run: |
+          mkdir -p /tmp/terraria-e2e/worlds /tmp/terraria-e2e/backups /tmp/terraria-e2e/Mods
+          dd if=/dev/zero bs=128 count=1 > /tmp/terraria-e2e/worlds/E2EWorld.wld 2>/dev/null
+          pytest tests/e2e -m e2e \
+            --tb=short \
+            --browser chromium \
+            -q
+
+      - name: Upload Playwright traces on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: admin/test-results/
+
   # ── Build & push Docker images ────────────────────────────────────────────
   build-push:
     name: Build & push images
-    needs: lint
+    needs: [test, test-e2e]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 

@@ -40,8 +40,12 @@ def create_app(config_class=Config):
     app.register_blueprint(console_bp)
     app.register_blueprint(api_bp)
 
-    # Start background daemons only once (guard against werkzeug reloader double-start)
-    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    # Start background daemons only once.
+    # Skip in TESTING mode (CI/pytest) to avoid Docker calls and thread leaks.
+    # Guard against werkzeug reloader double-start in dev.
+    if not os.environ.get('TESTING') and (
+        not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
+    ):
         from .services.schedulers import start_all
         start_all(app)
 
