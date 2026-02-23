@@ -1,8 +1,9 @@
 import os
 import shutil
+import tempfile
 import time
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, url_for
 
 from ..decorators import login_required
 from ..services.backups import create_backup, list_backups, prune_auto_backups
@@ -10,6 +11,18 @@ from ..services.discord import discord_notify
 from ..services.server import container_action
 
 bp = Blueprint('backups', __name__)
+
+
+def _safe_backup_path(backup_name, cfg):
+    """Return resolved backup path only if it's within BACKUPS_DIR, else None."""
+    if not backup_name or os.sep in backup_name or '..' in backup_name:
+        return None
+    candidate = os.path.join(cfg.BACKUPS_DIR, backup_name)
+    real = os.path.realpath(candidate)
+    real_base = os.path.realpath(cfg.BACKUPS_DIR)
+    if not real.startswith(real_base + os.sep) and real != real_base:
+        return None
+    return candidate
 
 
 @bp.route('/backups')
@@ -42,10 +55,10 @@ def backups_create():
 def backups_restore():
     cfg = current_app.terraria_config
     backup_name = request.form.get('backup_name', '').strip()
-    if not backup_name or os.sep in backup_name or '..' in backup_name:
+    backup_path = _safe_backup_path(backup_name, cfg)
+    if not backup_path:
         flash('Invalid backup name', 'error')
         return redirect(url_for('backups.backups'))
-    backup_path = os.path.join(cfg.BACKUPS_DIR, backup_name)
     if not os.path.isdir(backup_path):
         flash('Backup not found', 'error')
         return redirect(url_for('backups.backups'))
@@ -77,13 +90,36 @@ def backups_restore():
 def backups_delete():
     cfg = current_app.terraria_config
     backup_name = request.form.get('backup_name', '').strip()
-    if not backup_name or os.sep in backup_name or '..' in backup_name:
+    backup_path = _safe_backup_path(backup_name, cfg)
+    if not backup_path:
         flash('Invalid backup name', 'error')
         return redirect(url_for('backups.backups'))
-    backup_path = os.path.join(cfg.BACKUPS_DIR, backup_name)
     if os.path.isdir(backup_path):
         shutil.rmtree(backup_path)
         flash(f'Backup "{backup_name}" deleted.', 'success')
     else:
         flash('Backup not found', 'error')
     return redirect(url_for('backups.backups'))
+
+
+@bp.route('/backups/download/<backup_name>')
+@login_required
+def backups_download(backup_name):
+    cfg = current_app.terraria_config
+    backup_path = _safe_backup_path(backup_name, cfg)
+    if not backup_path or not os.path.isdir(backup_path):
+        flash('Backup not found', 'error')
+        return redirect(url_for('backups.backups'))
+    try:
+        tmp_dir = tempfile.mkdtemp()
+        zip_base = os.path.join(tmp_dir, backup_name)
+        zip_path = shutil.make_archive(zip_base, 'zip', backup_path)
+        return send_file(
+            zip_path,
+            as_attachment=True,
+            download_name=f'{backup_name}.zip',
+            mimetype='application/zip',
+        )
+    except Exception as exc:
+        flash(f'Download failed: {exc}', 'error')
+        return redirect(url_for('backups.backups'))
