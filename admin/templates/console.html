@@ -33,9 +33,14 @@
         <button class="btn btn-primary" onclick="sendCmd()" style="height:42px;">Send</button>
     </div>
     <small style="color:var(--text-muted); display:block; margin-top:8px;">
-        Commands are sent to the server via screen stdin. Use ↑/↓ to navigate history.
+        Commands are sent to the server via stdin FIFO. Use ↑/↓ for history.
         Available: dawn, noon, dusk, midnight, save, players, say &lt;msg&gt;, kick &lt;name&gt;, ban &lt;name&gt;, exit
     </small>
+    <div id="fifoWarning" style="display:none; margin-top:8px; padding:8px 12px;
+         border-radius:var(--radius-sm); background:var(--danger-bg);
+         border:1px solid var(--danger); color:var(--danger); font-size:0.82rem;">
+        Server is not accepting input — FIFO not connected. Make sure the server container is running.
+    </div>
 </div>
 {% endblock %}
 
@@ -126,10 +131,13 @@ function sendCmd() {
     })
     .then(r => r.json())
     .then(data => {
+        const warn = document.getElementById('fifoWarning');
         if (!data.ok) {
             appendLocal(`<span style="color:var(--danger)">[error] ${escHtml(data.error || 'Send failed')}</span>`);
+            if (warn && data.error && data.error.includes('FIFO')) warn.style.display = '';
         } else {
             appendLocal(`<span style="color:var(--accent)">&gt; ${escHtml(cmd)}</span>`);
+            if (warn) warn.style.display = 'none';
         }
     })
     .catch(() => {});

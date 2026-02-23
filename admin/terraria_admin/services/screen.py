@@ -7,15 +7,25 @@ def _fifo_path(cfg):
 
 
 def screen_send(cmd, cfg):
-    """Write a command to the server's stdin FIFO (non-blocking)."""
+    """Write a command to the server's stdin FIFO (non-blocking).
+
+    Returns True on success, False if the FIFO doesn't exist yet or has
+    no reader (server not running / entrypoint not started).
+    """
     fifo = _fifo_path(cfg)
+    # The FIFO is created by server-entrypoint.sh on container start.
+    # If it doesn't exist yet (first run or server restarting), bail out.
+    if not os.path.exists(fifo):
+        return False
     try:
-        # O_NONBLOCK prevents blocking when the server is not running
-        # (no reader on the other end of the FIFO).
+        # O_NONBLOCK: fail immediately with ENXIO if there is no reader,
+        # instead of blocking forever waiting for the server to open the pipe.
         fd = os.open(fifo, os.O_WRONLY | os.O_NONBLOCK)
         with os.fdopen(fd, 'w') as f:
             f.write(cmd + '\n')
         return True
+    except OSError:
+        return False
     except Exception:
         return False
 

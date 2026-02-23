@@ -43,5 +43,7 @@ def api_console_send():
     cmd = data.get('cmd', '').strip()[:500]
     if not cmd:
         return jsonify({'ok': False, 'error': 'Empty command'})
-    screen_send(cmd, cfg)
+    ok = screen_send(cmd, cfg)
+    if not ok:
+        return jsonify({'ok': False, 'error': 'Server is not accepting input — FIFO not connected or server is offline'})
     return jsonify({'ok': True})

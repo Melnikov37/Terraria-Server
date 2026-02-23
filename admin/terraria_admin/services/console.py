@@ -93,14 +93,40 @@ def start_console_poller(app):
             time.sleep(5)
 
     # ── 2. File poller ────────────────────────────────────────────────────────
+    def _resolve_log_file(path):
+        """Return actual log file to tail.
+
+        tModLoader creates dated log files (e.g. server_2024-01-15_00-00-00.log)
+        instead of the plain server.log.  If the configured path doesn't exist,
+        scan its parent directory for the newest *.log file so the poller
+        automatically picks up whatever name the server is using today.
+        """
+        if _os.path.isfile(path):
+            return path
+        log_dir = _os.path.dirname(path)
+        if not _os.path.isdir(log_dir):
+            return path  # nothing we can do yet
+        try:
+            candidates = [
+                _os.path.join(log_dir, f)
+                for f in _os.listdir(log_dir)
+                if f.endswith('.log')
+            ]
+            if candidates:
+                return max(candidates, key=_os.path.getmtime)
+        except Exception:
+            pass
+        return path
+
     def _file_run():
         import os as _os
-        log_file = getattr(cfg, 'LOG_FILE', None)
-        if not log_file:
+        configured = getattr(cfg, 'LOG_FILE', None)
+        if not configured:
             return  # LOG_FILE not configured — nothing to tail
         last_pos = 0
         last_inode = None
         while True:
+            log_file = _resolve_log_file(configured)
             try:
                 if not _os.path.exists(log_file):
                     time.sleep(2)
