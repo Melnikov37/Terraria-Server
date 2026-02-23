@@ -264,32 +264,41 @@ def list_mods(cfg):
 # steamcmd download helper
 # ------------------------------------------------------------------
 
+def _run_steamcmd_download(steamcmd, app_id, workshop_id, steamcmd_home):
+    """Run steamcmd and return (result, workshop_dir_or_None)."""
+    result = subprocess.run(
+        [steamcmd,
+         '+login', 'anonymous',
+         '+workshop_download_item', app_id, workshop_id,
+         '+quit'],
+        capture_output=True, text=True, timeout=300,
+        env={**os.environ, 'HOME': steamcmd_home}
+    )
+    workshop_dir = os.path.join(
+        steamcmd_home, 'Steam', 'steamapps', 'workshop',
+        'content', app_id, workshop_id
+    )
+    return result, workshop_dir if os.path.isdir(workshop_dir) else None
+
+
 def download_mod_from_workshop(steamcmd, workshop_id, cfg):
-    """Download a Workshop item and copy the .tmod into MODS_DIR."""
+    """Download a Workshop item and copy the .tmod into MODS_DIR.
+
+    tModLoader mods (1.4+) live under App ID 1281930 in the Workshop;
+    legacy Terraria mods use 105600. We try 1281930 first, then fall
+    back to 105600 so both generations are handled automatically.
+    """
     steamcmd_home = '/tmp/steamcmd_home'
     os.makedirs(steamcmd_home, exist_ok=True)
     try:
-        result = subprocess.run(
-            [steamcmd,
-             '+login', 'anonymous',
-             '+workshop_download_item', cfg.TERRARIA_APP_ID, workshop_id,
-             '+quit'],
-            capture_output=True, text=True, timeout=300,
-            env={**os.environ, 'HOME': steamcmd_home}
-        )
-
-        workshop_dir = os.path.join(
-            steamcmd_home, 'Steam', 'steamapps', 'workshop',
-            'content', cfg.TERRARIA_APP_ID, workshop_id
-        )
-        # Some steamcmd versions store tModLoader mods under App ID 1281930 instead of 105600
-        if not os.path.isdir(workshop_dir):
-            workshop_dir = os.path.join(
-                steamcmd_home, 'Steam', 'steamapps', 'workshop',
-                'content', '1281930', workshop_id
+        # Try tModLoader app first (1281930), then Terraria (105600)
+        for app_id in ('1281930', cfg.TERRARIA_APP_ID):
+            result, workshop_dir = _run_steamcmd_download(
+                steamcmd, app_id, workshop_id, steamcmd_home
             )
-
-        if not os.path.isdir(workshop_dir):
+            if workshop_dir:
+                break
+        else:
             tail = (result.stdout + result.stderr)[-600:]
             return None, f'Workshop item {workshop_id} download failed. steamcmd: {tail}'
 

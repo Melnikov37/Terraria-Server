@@ -8,7 +8,7 @@ import pytest
 
 from terraria_admin.services.mods import (
     get_enabled_mods, save_enabled_mods, list_mods,
-    record_mod_installed, get_mod_meta,
+    record_mod_installed, get_mod_meta, download_mod_from_workshop,
 )
 
 
@@ -58,6 +58,84 @@ class TestModService:
         names = [m['name'] for m in mods]
         assert 'ModA' in names
         assert 'ModB' in names
+
+    def test_download_uses_tmodloader_app_id_first(self, tmp_path):
+        """download_mod_from_workshop tries App ID 1281930 before 105600.
+        Simulates the case where the mod is in the tModLoader Workshop (1281930)
+        but NOT in the Terraria Workshop (105600) — e.g. Calamity Mod.
+        """
+        cfg = FakeModsCfg(str(tmp_path))
+        cfg.TERRARIA_APP_ID = '105600'
+
+        steamcmd_home = str(tmp_path / 'steamcmd_home')
+        # Pre-create the workshop dir under 1281930 (tModLoader) with a fake .tmod
+        workshop_dir = os.path.join(
+            steamcmd_home, 'Steam', 'steamapps', 'workshop',
+            'content', '1281930', '2824688072'
+        )
+        os.makedirs(workshop_dir, exist_ok=True)
+        tmod_path = os.path.join(workshop_dir, 'CalamityMod.tmod')
+        with open(tmod_path, 'wb') as f:
+            f.write(b'\x00' * 64)
+
+        calls = []
+
+        def fake_steamcmd(steamcmd_bin, app_id, workshop_id, home):
+            calls.append(app_id)
+            # Simulate: 105600 returns no dir, 1281930 returns the pre-created dir
+            if app_id == '1281930':
+                return MagicMock(stdout='', stderr=''), workshop_dir
+            return MagicMock(stdout='', stderr=''), None
+
+        with patch('terraria_admin.services.mods._run_steamcmd_download', side_effect=fake_steamcmd), \
+             patch('terraria_admin.services.mods.os.makedirs'):
+            mod_name, err = download_mod_from_workshop('/fake/steamcmd.sh', '2824688072', cfg)
+
+        assert err is None
+        assert mod_name == 'CalamityMod'
+        # Must try 1281930 first
+        assert calls[0] == '1281930'
+
+    def test_download_falls_back_to_terraria_app_id(self, tmp_path):
+        """Falls back to TERRARIA_APP_ID (105600) when 1281930 has no match."""
+        cfg = FakeModsCfg(str(tmp_path))
+        cfg.TERRARIA_APP_ID = '105600'
+
+        steamcmd_home = str(tmp_path / 'steamcmd_home2')
+        workshop_dir = os.path.join(
+            steamcmd_home, 'Steam', 'steamapps', 'workshop',
+            'content', '105600', '99999'
+        )
+        os.makedirs(workshop_dir, exist_ok=True)
+        with open(os.path.join(workshop_dir, 'OldMod.tmod'), 'wb') as f:
+            f.write(b'\x00' * 64)
+
+        def fake_steamcmd(steamcmd_bin, app_id, workshop_id, home):
+            if app_id == '105600':
+                return MagicMock(stdout='', stderr=''), workshop_dir
+            return MagicMock(stdout='', stderr=''), None
+
+        with patch('terraria_admin.services.mods._run_steamcmd_download', side_effect=fake_steamcmd), \
+             patch('terraria_admin.services.mods.os.makedirs'):
+            mod_name, err = download_mod_from_workshop('/fake/steamcmd.sh', '99999', cfg)
+
+        assert err is None
+        assert mod_name == 'OldMod'
+
+    def test_download_returns_error_when_both_app_ids_fail(self, tmp_path):
+        """Returns an error message when neither app ID yields a workshop dir."""
+        cfg = FakeModsCfg(str(tmp_path))
+        cfg.TERRARIA_APP_ID = '105600'
+
+        def fake_steamcmd(steamcmd_bin, app_id, workshop_id, home):
+            return MagicMock(stdout='No match', stderr=''), None
+
+        with patch('terraria_admin.services.mods._run_steamcmd_download', side_effect=fake_steamcmd), \
+             patch('terraria_admin.services.mods.os.makedirs'):
+            mod_name, err = download_mod_from_workshop('/fake/steamcmd.sh', '0000000', cfg)
+
+        assert mod_name is None
+        assert 'download failed' in err.lower()
 
     def test_record_and_get_mod_meta(self, tmp_path):
         cfg = FakeModsCfg(str(tmp_path))
