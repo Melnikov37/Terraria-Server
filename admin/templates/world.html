@@ -55,6 +55,20 @@
         </div>
         {% endfor %}
     </div>
+    {% elif generating %}
+    <meta http-equiv="refresh" content="15">
+    <div style="display:flex;align-items:center;gap:14px;padding:16px;
+                border-radius:var(--radius-md);background:var(--bg);
+                border:1px solid var(--warning);">
+        <span style="font-size:1.3rem;animation:spin 1.2s linear infinite;display:inline-block;">↻</span>
+        <div>
+            <strong style="font-size:1rem;color:var(--warning);">Generating "{{ generating }}"…</strong>
+            <div style="color:var(--text-muted);font-size:0.82rem;margin-top:3px;">
+                World generation takes 2–5 minutes. Page refreshes automatically.
+                Watch progress in <a href="{{ url_for('console.console') }}" style="color:var(--accent);">Console</a>.
+            </div>
+        </div>
+    </div>
     {% else %}
     <p style="color:var(--text-muted);text-align:center;padding:24px 0;margin:0;">
         No world files found. Create a new world below.

@@ -6,7 +6,7 @@ from datetime import datetime
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 
 from ..decorators import login_required
-from ..services.server import get_server_status, get_server_type, container_action
+from ..services.server import get_server_status, get_server_type, container_action, read_serverconfig
 from ..services.tshock import rest_call
 from ..services.screen import screen_send
 from ..services.world import list_worlds
@@ -20,7 +20,15 @@ def world():
     cfg = current_app.terraria_config
     status = get_server_status(cfg)
     worlds = list_worlds(cfg)
-    return render_template('world.html', status=status, worlds=worlds)
+    # Detect world generation in progress: server is running, no .wld files yet,
+    # but serverconfig has autocreate set — tModLoader is generating the world.
+    generating = None
+    if not worlds and status.get('online'):
+        worldname = read_serverconfig('worldname', cfg)
+        autocreate = read_serverconfig('autocreate', cfg)
+        if worldname and autocreate:
+            generating = worldname
+    return render_template('world.html', status=status, worlds=worlds, generating=generating)
 
 
 @bp.route('/world/time', methods=['POST'])
