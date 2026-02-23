@@ -41,6 +41,14 @@ def create_app(config_class=Config):
     app.register_blueprint(console_bp)
     app.register_blueprint(api_bp)
 
+    # Security headers on every response
+    @app.after_request
+    def _security_headers(response):
+        response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        response.headers.setdefault('X-Frame-Options', 'DENY')
+        response.headers.setdefault('Referrer-Policy', 'same-origin')
+        return response
+
     # Error handlers
     @app.errorhandler(404)
     def not_found(e):
