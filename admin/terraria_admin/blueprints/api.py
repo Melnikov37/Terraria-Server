@@ -89,10 +89,16 @@ def _read_logs(cfg, lines):
     return list(console_buffer)[-lines:]
 
 
+@bp.route('/diag')
+@login_required
+def diag_page():
+    return render_template('diag.html')
+
+
 @bp.route('/api/diag')
 @login_required
 def api_diag():
-    """Diagnostic endpoint: Docker connection, container logs, worlds dir, config."""
+    """Diagnostic endpoint: Docker connection, container exec probes, worlds dir, log file."""
     import os
     cfg = current_app.terraria_config
     result = {
@@ -102,16 +108,19 @@ def api_diag():
             'status': None,
             'tty': None,
             'logs_last': [],
-            'entrypoint_head': None,
+            'entrypoint_args_section': None,
             'wld_search': None,
             'terraria_ls': None,
+            'tml_logs_ls': None,
+            'log_file_tail': None,
         },
         'console_buffer': {'size': 0, 'last': []},
         'worlds': {'dir': cfg.WORLDS_DIR, 'exists': False, 'files': []},
         'serverconfig': {'exists': False, 'content': None},
+        'log_file': {'path': getattr(cfg, 'LOG_FILE', None), 'exists': False, 'tail': []},
     }
 
-    # Docker
+    # Docker + container exec probes
     try:
         import docker
         client = docker.from_env()
@@ -119,30 +128,41 @@ def api_diag():
         try:
             container = client.containers.get(cfg.SERVER_CONTAINER)
             result['container']['status'] = container.status
-            # Is tty: true actually applied to the running container?
             result['container']['tty'] = container.attrs.get('Config', {}).get('Tty', False)
 
-            # Read Docker logs directly (non-streaming)
+            # Docker logs (non-streaming) — may be empty if tModLoader writes to file
             raw = container.logs(tail=100, stdout=True, stderr=True)
             lines = raw.decode('utf-8', errors='replace').splitlines()
-            result['container']['logs_last'] = lines[-100:]
+            result['container']['logs_last'] = [l for l in lines if l.strip()][-50:]
 
             if container.status == 'running':
-                def _exec(cmd):
+                def _exec(sh_cmd):
+                    """Run sh -c '...' inside the container."""
                     try:
-                        r = container.exec_run(cmd, stdout=True, stderr=True)
+                        r = container.exec_run(['sh', '-c', sh_cmd],
+                                               stdout=True, stderr=True)
                         return r.output.decode('utf-8', errors='replace').strip()
                     except Exception as e:
                         return f'exec error: {e}'
 
-                # First 15 lines of the deployed entrypoint (shows if fix is applied)
-                result['container']['entrypoint_head'] = _exec('head -15 /entrypoint.sh')
-                # Search for .wld files anywhere in the container
-                result['container']['wld_search'] = _exec(
-                    'find / -name "*.wld" -not -path "/proc/*" -not -path "/sys/*" 2>/dev/null'
+                # Show ARGS section of entrypoint to verify worldpath fix is deployed
+                result['container']['entrypoint_args_section'] = _exec(
+                    'grep -n "ARGS\\|worldpath\\|SERVERCONFIG\\|config" /entrypoint.sh | head -20'
                 )
-                # List the shared volume
+                # Find .wld files anywhere in the container (most important!)
+                result['container']['wld_search'] = _exec(
+                    'find / -name "*.wld" -not -path "/proc/*" -not -path "/sys/*" 2>/dev/null || echo "(none found)"'
+                )
+                # List shared volume
                 result['container']['terraria_ls'] = _exec('ls -lah /opt/terraria/')
+                # List tModLoader log directory (reveals if logs are being written)
+                result['container']['tml_logs_ls'] = _exec(
+                    'ls -lah /root/.local/share/Terraria/tModLoader/Logs/ 2>/dev/null || echo "(dir not found)"'
+                )
+                # Last 30 lines of tModLoader server.log if it exists
+                result['container']['log_file_tail'] = _exec(
+                    'tail -30 /root/.local/share/Terraria/tModLoader/Logs/server.log 2>/dev/null || echo "(log not found)"'
+                )
         except Exception as exc:
             result['container']['status'] = f'error: {exc}'
         finally:
@@ -169,6 +189,17 @@ def api_diag():
             result['serverconfig']['content'] = f.read()
     except Exception:
         pass
+
+    # Log file (on shared volume after docker-compose mount)
+    log_file = getattr(cfg, 'LOG_FILE', None)
+    if log_file and os.path.exists(log_file):
+        result['log_file']['exists'] = True
+        try:
+            with open(log_file, 'r', errors='replace') as f:
+                lines = f.readlines()
+            result['log_file']['tail'] = [l.rstrip() for l in lines[-50:]]
+        except Exception:
+            pass
 
     return jsonify(result)
 

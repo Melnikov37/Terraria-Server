@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}Diagnostics — Terraria Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Server Diagnostics</h2>
+    <button id="btnRefresh" class="btn btn-primary" onclick="loadDiag()">Refresh</button>
+</div>
+
+<div id="diagContent">
+    <p style="color:var(--text-muted);text-align:center;padding:40px;">Loading…</p>
+</div>
+
+<style>
+.diag-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media(max-width:900px){ .diag-grid { grid-template-columns:1fr; } }
+.diag-section { margin-bottom:0; }
+.status-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
+.dot-ok   { background:var(--success); }
+.dot-warn { background:var(--warning); }
+.dot-err  { background:var(--danger); }
+.kv { display:flex; gap:8px; margin-bottom:5px; align-items:baseline; flex-wrap:wrap; }
+.kv-key { color:var(--text-muted); font-size:0.82rem; min-width:140px; flex-shrink:0; }
+.kv-val { font-family:var(--font-mono); font-size:0.82rem; word-break:break-all; }
+pre.diag-pre {
+    background:var(--bg);
+    border:1px solid var(--border);
+    border-radius:var(--radius-sm);
+    padding:10px 12px;
+    font-family:var(--font-mono);
+    font-size:0.78rem;
+    line-height:1.5;
+    overflow-x:auto;
+    white-space:pre-wrap;
+    word-break:break-word;
+    max-height:320px;
+    overflow-y:auto;
+    margin:0;
+    color:var(--text-dim);
+}
+.badge-ok   { background:var(--success-bg); color:var(--success); }
+.badge-warn { background:var(--warning-bg); color:var(--warning); }
+.badge-err  { background:var(--danger-bg);  color:var(--danger); }
+.badge { font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:20px;
+         letter-spacing:0.06em; text-transform:uppercase; display:inline-block; }
+.spin { display:inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+</style>
+
+<script>
+function badge(ok, labels) {
+    const cls = ok === true ? 'badge-ok' : ok === false ? 'badge-err' : 'badge-warn';
+    const txt = ok === true ? (labels[0]||'OK') : ok === false ? (labels[1]||'FAIL') : (labels[2]||'?');
+    return `<span class="badge ${cls}">${txt}</span>`;
+}
+
+function pre(text) {
+    if (!text) return '<em style="color:var(--text-muted)">(empty)</em>';
+    const escaped = String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<pre class="diag-pre">${escaped}</pre>`;
+}
+
+function kv(key, valHtml) {
+    return `<div class="kv"><span class="kv-key">${key}</span><span class="kv-val">${valHtml}</span></div>`;
+}
+
+function section(title, body) {
+    return `<div class="card diag-section"><div class="card-title">${title}</div>${body}</div>`;
+}
+
+async function loadDiag() {
+    const btn = document.getElementById('btnRefresh');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin">↻</span> Refreshing…';
+
+    let d;
+    try {
+        const r = await fetch('/api/diag');
+        d = await r.json();
+    } catch(e) {
+        document.getElementById('diagContent').innerHTML =
+            `<div class="card"><p style="color:var(--danger)">Failed to fetch: ${e}</p></div>`;
+        btn.disabled = false; btn.textContent = 'Refresh';
+        return;
+    }
+
+    let html = '<div class="diag-grid">';
+
+    // ── Docker + Container ─────────────────────────────────────────────────
+    {
+        const dk = d.docker;
+        const ct = d.container;
+        let body = '';
+        body += kv('Docker', badge(dk.connected, ['Connected','Not connected']) + (dk.error ? ` <span style="color:var(--danger);font-size:0.8rem">${dk.error}</span>` : ''));
+        body += kv('Container', `<code>${ct.name}</code>`);
+        body += kv('Status', ct.status ? badge(ct.status==='running',['running','stopped']) + ` <code>${ct.status}</code>` : '—');
+        body += kv('tty: true', badge(ct.tty===true,['Applied','NOT applied','?']));
+
+        const dockerLogs = (ct.logs_last||[]).length;
+        body += kv('Docker logs', badge(dockerLogs>0,[`${dockerLogs} lines`,`Empty (tModLoader writes to file)`,'?']) +
+                   (dockerLogs === 0 ? ' — tModLoader writes to file, not stdout' : ''));
+
+        html += section('🐳 Docker / Container', body);
+    }
+
+    // ── Worlds & Config ────────────────────────────────────────────────────
+    {
+        const w = d.worlds;
+        const sc = d.serverconfig;
+        let body = '';
+        body += kv('Worlds dir', `<code>${w.dir}</code> ` + badge(w.exists,['exists','missing']));
+        if (w.exists) {
+            const wldFiles = (w.files||[]).filter(f=>f.endsWith('.wld'));
+            body += kv('World files', wldFiles.length > 0
+                ? wldFiles.map(f=>`<code>${f}</code>`).join(', ')
+                : badge(false,['','No .wld files found']));
+            if (w.files && w.files.length) {
+                body += kv('All files', (w.files||[]).map(f=>`<code>${f}</code>`).join(', '));
+            }
+        }
+        body += kv('serverconfig.txt', badge(sc.exists,['exists','missing']));
+        if (sc.content) { body += pre(sc.content); }
+        html += section('🌍 Worlds & Config', body);
+    }
+
+    html += '</div><div class="diag-grid" style="margin-top:16px">';
+
+    // ── Log file ───────────────────────────────────────────────────────────
+    {
+        const lf = d.log_file;
+        const ct = d.container;
+        let body = '';
+        body += kv('LOG_FILE path', lf.path ? `<code>${lf.path}</code>` : badge(null,['','','Not configured']));
+        body += kv('Accessible', badge(lf.exists,['Yes (volume mount works)','No — check docker-compose volume']));
+
+        if (lf.exists && lf.tail && lf.tail.length) {
+            body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">Last ${lf.tail.length} lines:</p>`;
+            body += pre(lf.tail.join('\n'));
+        } else if (ct.log_file_tail && !ct.log_file_tail.includes('not found')) {
+            body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">Direct read from container:</p>`;
+            body += pre(ct.log_file_tail);
+        } else {
+            body += `<p style="color:var(--text-muted);font-size:0.85rem;margin-top:8px;">
+                Log file not accessible. Add the volume mount to docker-compose.yml:<br>
+                <code style="font-size:0.78rem">- /opt/terraria/logs:/root/.local/share/Terraria/tModLoader/Logs</code>
+            </p>`;
+        }
+        html += section('📄 Server Log File', body);
+    }
+
+    // ── Console buffer ─────────────────────────────────────────────────────
+    {
+        const cb = d.console_buffer;
+        let body = '';
+        body += kv('Buffer size', `<code>${cb.size}</code> lines`);
+        body += kv('Status', badge(cb.size > 0, ['Has data','Empty — check log sources']));
+        if (cb.last && cb.last.length) {
+            body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">Last ${cb.last.length} lines:</p>`;
+            body += pre(cb.last.join('\n'));
+        }
+        html += section('📡 Console Buffer', body);
+    }
+
+    html += '</div><div class="diag-grid" style="margin-top:16px">';
+
+    // ── Entrypoint check ───────────────────────────────────────────────────
+    {
+        const ct = d.container;
+        let body = '';
+        const ep = ct.entrypoint_args_section || '';
+        const hasWorldpath = ep.includes('worldpath');
+        const hasConfig    = ep.includes('SERVERCONFIG') || ep.includes('-config');
+        body += kv('-worldpath fix', badge(hasWorldpath,['Present in entrypoint','MISSING — old image!']));
+        body += kv('-config fix',    badge(hasConfig,   ['Present in entrypoint','MISSING — old image!']));
+        if (ep) {
+            body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">ARGS/config lines from /entrypoint.sh:</p>`;
+            body += pre(ep);
+        }
+        html += section('⚙️ Entrypoint (deployed image)', body);
+    }
+
+    // ── .wld file search ──────────────────────────────────────────────────
+    {
+        const ct = d.container;
+        let body = '';
+        const wld = ct.wld_search || '';
+        const found = wld && !wld.includes('none found') && wld.trim() !== '';
+        body += kv('Search result', badge(found, ['Files found!', 'No .wld files anywhere in container', '?']));
+        if (wld && !wld.includes('exec error')) {
+            body += pre(wld || '(empty)');
+        }
+        // tModLoader log dir inside container
+        if (ct.tml_logs_ls) {
+            body += `<p style="margin:8px 0 4px;font-size:0.8rem;color:var(--text-muted)">~/.local/share/Terraria/tModLoader/Logs/ (inside container):</p>`;
+            body += pre(ct.tml_logs_ls);
+        }
+        body += kv('Shared volume', '');
+        body += pre(ct.terraria_ls || '(not available)');
+        html += section('🔍 World File Search', body);
+    }
+
+    html += '</div>';
+
+    // ── Docker logs (raw) ──────────────────────────────────────────────────
+    const dockerLines = (d.container.logs_last||[]);
+    if (dockerLines.length > 0) {
+        html += `<div class="card" style="margin-top:16px">
+            <div class="card-title">Docker Logs (last ${dockerLines.length} lines)</div>
+            ${pre(dockerLines.join('\n'))}
+        </div>`;
+    }
+
+    document.getElementById('diagContent').innerHTML = html;
+    btn.disabled = false;
+    btn.textContent = 'Refresh';
+}
+
+loadDiag();
+</script>
+{% endblock %}
