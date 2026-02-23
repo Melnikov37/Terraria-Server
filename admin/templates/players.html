@@ -4,10 +4,12 @@
 {% block content %}
 <div class="page-header">
     <h2>Players Management</h2>
+    <span id="refreshBadge" style="color:var(--text-muted);font-size:0.8rem;"></span>
 </div>
 
 <div class="card">
-    <div class="card-title">Online Players ({{ players|length }})</div>
+    <div class="card-title">Online Players <span id="playerCountLabel">({{ players|length }})</span></div>
+    <div id="onlinePlayersList">
     {% if players %}
     <table class="table">
         <thead>
@@ -26,12 +28,14 @@
                 <td>{{ player.group or 'guest' }}</td>
                 <td>
                     <div class="btn-group">
-                        <form method="POST" action="{{ url_for('players.kick_player') }}" class="inline-form">
+                        <form method="POST" action="{{ url_for('players.kick_player') }}" class="inline-form"
+                              onsubmit="return confirm('Kick {{ player.nickname|e }}?');">
                             <input type="hidden" name="player" value="{{ player.nickname }}">
                             <input type="hidden" name="reason" value="Kicked by admin">
                             <button type="submit" class="btn btn-warning btn-sm">Kick</button>
                         </form>
-                        <form method="POST" action="{{ url_for('players.ban_player') }}" class="inline-form">
+                        <form method="POST" action="{{ url_for('players.ban_player') }}" class="inline-form"
+                              onsubmit="return confirm('Ban {{ player.nickname|e }}? This will prevent them from joining.');">
                             <input type="hidden" name="player" value="{{ player.nickname }}">
                             <input type="hidden" name="reason" value="Banned by admin">
                             <button type="submit" class="btn btn-danger btn-sm">Ban</button>
@@ -45,12 +49,14 @@
     {% else %}
     <p style="color:var(--text-muted);">No players currently online</p>
     {% endif %}
+    </div>
 </div>
 
 <div class="grid grid-2">
     <div class="card">
         <div class="card-title">Kick Player</div>
-        <form method="POST" action="{{ url_for('players.kick_player') }}">
+        <form method="POST" action="{{ url_for('players.kick_player') }}"
+              onsubmit="return confirm('Kick this player?');">
             <div class="form-group">
                 <label>Player Name</label>
                 <input type="text" name="player" required placeholder="Enter player name">
@@ -65,7 +71,8 @@
 
     <div class="card">
         <div class="card-title">Ban Player</div>
-        <form method="POST" action="{{ url_for('players.ban_player') }}">
+        <form method="POST" action="{{ url_for('players.ban_player') }}"
+              onsubmit="return confirm('Ban this player? They will be unable to join.');">
             <div class="form-group">
                 <label>Player Name</label>
                 <input type="text" name="player" required placeholder="Enter player name">
@@ -111,4 +118,54 @@
     <p style="color:var(--text-muted);">No banned players</p>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const KICK_URL = "{{ url_for('players.kick_player') }}";
+const BAN_URL  = "{{ url_for('players.ban_player') }}";
+
+function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function refreshPlayers() {
+    fetch('/api/players')
+        .then(r => r.json())
+        .then(players => {
+            document.getElementById('playerCountLabel').textContent = `(${players.length})`;
+            const list = document.getElementById('onlinePlayersList');
+            if (!players.length) {
+                list.innerHTML = '<p style="color:var(--text-muted);">No players currently online</p>';
+                return;
+            }
+            const rows = players.map(p => {
+                const name = esc(p.nickname || p.name || '');
+                return `<tr>
+                    <td>${name}</td>
+                    <td>${esc(p.team || '—')}</td>
+                    <td>${esc(p.group || 'guest')}</td>
+                    <td><div class="btn-group">
+                        <form method="POST" action="${KICK_URL}" class="inline-form" onsubmit="return confirm('Kick ${name}?');">
+                            <input type="hidden" name="player" value="${name}">
+                            <input type="hidden" name="reason" value="Kicked by admin">
+                            <button class="btn btn-warning btn-sm">Kick</button>
+                        </form>
+                        <form method="POST" action="${BAN_URL}" class="inline-form" onsubmit="return confirm('Ban ${name}?');">
+                            <input type="hidden" name="player" value="${name}">
+                            <input type="hidden" name="reason" value="Banned by admin">
+                            <button class="btn btn-danger btn-sm">Ban</button>
+                        </form>
+                    </div></td>
+                </tr>`;
+            }).join('');
+            list.innerHTML = `<table class="table"><thead><tr><th>Name</th><th>Team</th><th>Group</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+            const badge = document.getElementById('refreshBadge');
+            if (badge) badge.textContent = 'Updated ' + new Date().toLocaleTimeString();
+        })
+        .catch(() => {});
+}
+
+setInterval(refreshPlayers, 15000);
+</script>
 {% endblock %}
