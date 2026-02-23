@@ -22,6 +22,8 @@ def _service_active(cfg):
 
     Caches the result for _STATUS_CACHE_TTL seconds to limit Docker SDK
     connections when multiple pages poll /api/status frequently.
+    Also caches StartedAt so _container_uptime() can compute uptime without
+    an extra Docker call.
     """
     import docker
     cache_key = cfg.SERVER_CONTAINER
@@ -32,12 +34,43 @@ def _service_active(cfg):
     try:
         container = client.containers.get(cfg.SERVER_CONTAINER)
         running = container.status == 'running'
+        started_at = container.attrs.get('State', {}).get('StartedAt', '') if running else ''
     except Exception:
         running = False
+        started_at = ''
     finally:
         client.close()
-    _status_cache[cache_key] = {'running': running, 'ts': time.monotonic()}
+    _status_cache[cache_key] = {'running': running, 'started_at': started_at, 'ts': time.monotonic()}
     return running
+
+
+def _container_uptime(cfg):
+    """Return a human-readable uptime string derived from the cached container StartedAt.
+
+    Requires _service_active() to have been called first (it populates the cache).
+    Returns '' when the container is not running or start time is unavailable.
+    """
+    from datetime import datetime, timezone
+    cached = _status_cache.get(cfg.SERVER_CONTAINER)
+    started_at = (cached or {}).get('started_at', '')
+    if not started_at:
+        return ''
+    try:
+        # Docker uses RFC3339 nanoseconds: "2024-01-15T10:30:00.123456789Z"
+        # Python's fromisoformat only handles up to microseconds — truncate.
+        ts = started_at[:26].rstrip('Z') + '+00:00'
+        start = datetime.fromisoformat(ts)
+        total = int((datetime.now(timezone.utc) - start).total_seconds())
+        if total < 0:
+            return ''
+        h, rem = divmod(total, 3600)
+        m, s   = divmod(rem, 60)
+        if h >= 24:
+            d, h = divmod(h, 24)
+            return f'{d}d {h}h {m}m'
+        return f'{h:02d}:{m:02d}:{s:02d}'
+    except Exception:
+        return ''
 
 
 def container_action(action, cfg):
@@ -100,7 +133,7 @@ def get_server_status(cfg):
 
     if server_type == 'tmodloader':
         return {
-            'online': service_running,  # already checked via Docker SDK in _service_active
+            'online': service_running,
             'service': service_running,
             'server_type': server_type,
             'version': version,
@@ -108,6 +141,7 @@ def get_server_status(cfg):
             'players': None,
             'max_players': int(read_serverconfig('maxplayers', cfg) or 8),
             'world': read_serverconfig('worldname', cfg) or 'Unknown',
+            'uptime': _container_uptime(cfg),
         }
 
     return {
@@ -119,6 +153,7 @@ def get_server_status(cfg):
         'players': None,
         'max_players': int(read_serverconfig('maxplayers', cfg) or 8),
         'world': read_serverconfig('worldname', cfg) or 'Unknown',
+        'uptime': _container_uptime(cfg),
         'error': None if service_running else 'Server is stopped',
     }
 
