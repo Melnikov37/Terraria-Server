@@ -138,15 +138,15 @@ def butcher():
 @login_required
 def recreate_world():
     cfg = current_app.terraria_config
-    worldname  = request.form.get('worldname', 'World')
-    size       = request.form.get('size', '2')
-    difficulty = request.form.get('difficulty', '0')
-    evil       = request.form.get('evil', '0')
+    worldname  = os.path.basename(request.form.get('worldname', 'World').strip()).replace('..', '').strip()[:64] or 'World'
+    size       = request.form.get('size', '2') if request.form.get('size') in ('1', '2', '3') else '2'
+    difficulty = request.form.get('difficulty', '0') if request.form.get('difficulty') in ('0', '1', '2', '3') else '0'
+    evil       = request.form.get('evil', '0') if request.form.get('evil') in ('0', '1', '2') else '0'
     seed       = request.form.get('seed', '').strip()
 
     world_file = os.path.join(cfg.WORLDS_DIR, worldname + '.wld')
     if os.path.exists(world_file):
-        flash(f'World "{worldname}" already exists. Use Switch & Restart to load it, or choose a different name.', 'error')
+        flash(f'World "{worldname}" already exists. Use Switch and Restart to load it, or choose a different name.', 'error')
         return redirect(url_for('world.world'))
 
     try:

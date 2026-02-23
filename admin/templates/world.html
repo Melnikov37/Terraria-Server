@@ -3,7 +3,19 @@
 
 {% block content %}
 <div class="page-header">
-    <h2>World Controls</h2>
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;">
+        <h2 style="margin:0;">World Controls</h2>
+        {% if status.port %}
+        <span style="font-size:0.82rem;color:var(--text-muted);font-family:var(--font-mono);">
+            port <strong style="color:var(--text-dim);">{{ status.port }}</strong>
+        </span>
+        {% endif %}
+        {% if status.world and status.world != 'Unknown' %}
+        <span style="font-size:0.82rem;color:var(--text-muted);">
+            world: <strong style="color:var(--text-dim);">{{ status.world }}</strong>
+        </span>
+        {% endif %}
+    </div>
     {% if status.online and status.server_type == 'tshock' %}
     <form method="POST" action="{{ url_for('world.save_world') }}" class="inline-form">
         <button type="submit" class="btn btn-success">Save World</button>
@@ -85,7 +97,9 @@
         <div class="grid grid-3">
             <div class="form-group">
                 <label>World Name</label>
-                <input type="text" name="worldname" value="World" required>
+                <input type="text" name="worldname" value="World" required
+                       maxlength="64" pattern="[^/\\\\.]+" title="No slashes or dots"
+                       autocomplete="off">
             </div>
             <div class="form-group">
                 <label>Size</label>
