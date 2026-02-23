@@ -93,10 +93,19 @@ def _read_logs(cfg, lines):
 @login_required
 def api_diag():
     """Diagnostic endpoint: Docker connection, container logs, worlds dir, config."""
+    import os
     cfg = current_app.terraria_config
     result = {
         'docker': {'connected': False, 'error': None},
-        'container': {'name': cfg.SERVER_CONTAINER, 'status': None, 'logs_last': []},
+        'container': {
+            'name': cfg.SERVER_CONTAINER,
+            'status': None,
+            'tty': None,
+            'logs_last': [],
+            'entrypoint_head': None,
+            'wld_search': None,
+            'terraria_ls': None,
+        },
         'console_buffer': {'size': 0, 'last': []},
         'worlds': {'dir': cfg.WORLDS_DIR, 'exists': False, 'files': []},
         'serverconfig': {'exists': False, 'content': None},
@@ -110,9 +119,30 @@ def api_diag():
         try:
             container = client.containers.get(cfg.SERVER_CONTAINER)
             result['container']['status'] = container.status
-            raw = container.logs(tail=50, stdout=True, stderr=True)
+            # Is tty: true actually applied to the running container?
+            result['container']['tty'] = container.attrs.get('Config', {}).get('Tty', False)
+
+            # Read Docker logs directly (non-streaming)
+            raw = container.logs(tail=100, stdout=True, stderr=True)
             lines = raw.decode('utf-8', errors='replace').splitlines()
-            result['container']['logs_last'] = lines[-50:]
+            result['container']['logs_last'] = lines[-100:]
+
+            if container.status == 'running':
+                def _exec(cmd):
+                    try:
+                        r = container.exec_run(cmd, stdout=True, stderr=True)
+                        return r.output.decode('utf-8', errors='replace').strip()
+                    except Exception as e:
+                        return f'exec error: {e}'
+
+                # First 15 lines of the deployed entrypoint (shows if fix is applied)
+                result['container']['entrypoint_head'] = _exec('head -15 /entrypoint.sh')
+                # Search for .wld files anywhere in the container
+                result['container']['wld_search'] = _exec(
+                    'find / -name "*.wld" -not -path "/proc/*" -not -path "/sys/*" 2>/dev/null'
+                )
+                # List the shared volume
+                result['container']['terraria_ls'] = _exec('ls -lah /opt/terraria/')
         except Exception as exc:
             result['container']['status'] = f'error: {exc}'
         finally:
@@ -128,7 +158,6 @@ def api_diag():
     result['console_buffer']['last'] = buf[-20:]
 
     # Worlds dir
-    import os
     if os.path.isdir(cfg.WORLDS_DIR):
         result['worlds']['exists'] = True
         result['worlds']['files'] = sorted(os.listdir(cfg.WORLDS_DIR))
