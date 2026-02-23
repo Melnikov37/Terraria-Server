@@ -366,6 +366,8 @@ def ensure_mod_dependencies(tmod_path, steamcmd, cfg):
         if err:
             messages.append((False, f'Failed to auto-install dependency "{dep}": {err}'))
         else:
+            dest = os.path.join(cfg.MODS_DIR, f'{mod_name}.tmod')
+            record_mod_installed(mod_name, dest, cfg, workshop_id=workshop_id)
             enabled = get_enabled_mods(cfg)
             enabled[mod_name] = True
             save_enabled_mods(enabled, cfg)

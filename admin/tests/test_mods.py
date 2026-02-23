@@ -9,6 +9,7 @@ import pytest
 from terraria_admin.services.mods import (
     get_enabled_mods, save_enabled_mods, list_mods,
     record_mod_installed, get_mod_meta, download_mod_from_workshop,
+    ensure_mod_dependencies,
 )
 
 
@@ -146,6 +147,51 @@ class TestModService:
         meta = get_mod_meta(cfg)
         assert 'CalamityMod' in meta
         assert meta['CalamityMod']['workshop_id'] == '2824688072'
+
+    def test_ensure_mod_dependencies_records_version(self, tmp_path):
+        """Auto-installed dependencies must have their version recorded in meta.
+
+        Regression: ensure_mod_dependencies was not calling record_mod_installed,
+        so dependency version was always '?' in list_mods.
+        """
+        cfg = FakeModsCfg(str(tmp_path))
+        cfg.KNOWN_WORKSHOP_IDS = {'CalamityModMusic': '2824688266'}
+
+        # Parent mod exists; dependency does NOT exist yet so ensure_mod_dependencies
+        # will try to download it (not hit the "already installed" branch).
+        parent_tmod = os.path.join(cfg.MODS_DIR, 'CalamityMod.tmod')
+        with open(parent_tmod, 'wb') as f:
+            f.write(b'\x00' * 64)
+
+        # After "download", the dep file will appear in MODS_DIR
+        dep_tmod = os.path.join(cfg.MODS_DIR, 'CalamityModMusic.tmod')
+
+        def fake_parse_deps(path):
+            return ['CalamityModMusic']
+
+        def fake_download(steamcmd, workshop_id, cfg_arg):
+            # Simulate the download creating the .tmod file
+            with open(dep_tmod, 'wb') as f:
+                f.write(b'\x00' * 64)
+            return 'CalamityModMusic', None
+
+        def fake_version(path):
+            return 'CalamityModMusic', '2.1.1'
+
+        with patch('terraria_admin.services.mods.parse_tmod_dependencies', side_effect=fake_parse_deps), \
+             patch('terraria_admin.services.mods.download_mod_from_workshop', side_effect=fake_download), \
+             patch('terraria_admin.services.mods.extract_tmod_version', side_effect=fake_version):
+            ensure_mod_dependencies(parent_tmod, '/fake/steamcmd', cfg)
+
+        meta = get_mod_meta(cfg)
+        assert 'CalamityModMusic' in meta, 'dependency must have a meta entry'
+        assert meta['CalamityModMusic']['version'] == '2.1.1', \
+            f"expected '2.1.1', got '{meta['CalamityModMusic'].get('version')}'"
+        assert meta['CalamityModMusic']['workshop_id'] == '2824688266'
+
+        # list_mods must also reflect the recorded version
+        mods = {m['name']: m for m in list_mods(cfg)}
+        assert mods['CalamityModMusic']['version'] == '2.1.1'
 
 
 # ── Route integration tests ───────────────────────────────────────────────────
