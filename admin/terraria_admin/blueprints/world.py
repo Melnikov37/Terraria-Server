@@ -57,7 +57,7 @@ def set_time():
 @login_required
 def broadcast():
     cfg = current_app.terraria_config
-    message = request.form.get('message', '').strip()
+    message = request.form.get('message', '').strip()[:500]
     if not message:
         flash('Message cannot be empty', 'error')
         return redirect(url_for('world.world'))
@@ -80,7 +80,7 @@ def broadcast():
 @login_required
 def run_command():
     cfg = current_app.terraria_config
-    cmd = request.form.get('command', '').strip()
+    cmd = request.form.get('command', '').strip()[:500]
     if not cmd:
         flash('Command cannot be empty', 'error')
         return redirect(url_for('world.world'))

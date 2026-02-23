@@ -48,17 +48,20 @@ def api_mods():
 @login_required
 def api_logs():
     cfg = current_app.terraria_config
-    lines = min(int(request.args.get('lines', 300)), 1000)
+    try:
+        lines = min(int(request.args.get('lines', 300)), 1000)
+    except (ValueError, TypeError):
+        lines = 300
     level = request.args.get('level', 'all')
 
     log_lines = _read_logs(cfg, lines)
 
     if level == 'error':
-        log_lines = [l for l in log_lines if any(
-            kw in l.lower() for kw in ('error', 'exception', 'fail', 'fatal'))]
+        log_lines = [line for line in log_lines if any(
+            kw in line.lower() for kw in ('error', 'exception', 'fail', 'fatal'))]
     elif level == 'warn':
-        log_lines = [l for l in log_lines if any(
-            kw in l.lower() for kw in ('warn', 'error', 'exception', 'fail', 'fatal'))]
+        log_lines = [line for line in log_lines if any(
+            kw in line.lower() for kw in ('warn', 'error', 'exception', 'fail', 'fatal'))]
     return jsonify({'lines': log_lines})
 
 

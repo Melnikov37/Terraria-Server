@@ -38,7 +38,6 @@ def config():
 
     version_info = get_version_info(cfg)
     server_type = get_server_type(cfg)
-    from flask import current_app
     is_default_secret = current_app.secret_key in (
         'change-me-in-production', b'change-me-in-production', '', b''
     )

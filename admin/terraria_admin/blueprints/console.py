@@ -19,7 +19,10 @@ def console():
 @bp.route('/api/console/lines')
 @login_required
 def api_console_lines():
-    since = int(request.args.get('since', 0))
+    try:
+        since = int(request.args.get('since', 0))
+    except (ValueError, TypeError):
+        since = 0
     with console_lock:
         buf = list(console_buffer)
         seq = extensions.console_seq
@@ -37,7 +40,7 @@ def api_console_lines():
 def api_console_send():
     cfg = current_app.terraria_config
     data = request.get_json(silent=True) or {}
-    cmd = data.get('cmd', '').strip()
+    cmd = data.get('cmd', '').strip()[:500]
     if not cmd:
         return jsonify({'ok': False, 'error': 'Empty command'})
     screen_send(cmd, cfg)
