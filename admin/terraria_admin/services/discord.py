@@ -21,12 +21,22 @@ def save_discord_config(data, cfg):
         json.dump(data, f, indent=2)
 
 
+_DISCORD_PREFIXES = (
+    'https://discord.com/api/webhooks/',
+    'https://discordapp.com/api/webhooks/',
+    'https://ptb.discord.com/api/webhooks/',
+    'https://canary.discord.com/api/webhooks/',
+)
+
+
 def discord_notify(message, cfg, color=0x3fb950, event='info'):
     """Fire-and-forget Discord webhook notification in a background thread."""
     dcfg = get_discord_config(cfg)
     webhook_url = dcfg.get('webhook_url', '').strip()
     if not webhook_url:
         return
+    if not any(webhook_url.startswith(p) for p in _DISCORD_PREFIXES):
+        return  # reject non-Discord URLs (SSRF guard)
     if not dcfg.get(f'notify_{event}', True):
         return
 
