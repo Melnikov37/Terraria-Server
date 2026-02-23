@@ -252,7 +252,7 @@ class TestWorldRoutes:
              patch('terraria_admin.blueprints.world.time'):
             r = auth_client.post('/world/recreate',
                                  data={
-                                     'worldname': 'TestWorld',
+                                     'worldname': 'EvilSeedWorld',
                                      'size': '2',
                                      'difficulty': '1',
                                      'evil': '2',

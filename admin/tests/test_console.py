@@ -32,12 +32,14 @@ class TestConsoleRoutes:
         assert isinstance(data['lines'], list)
 
     def test_api_console_lines_since_filters(self, auth_client):
+        from terraria_admin import extensions
         from terraria_admin.extensions import console_buffer, console_lock
         with console_lock:
-            before = len(console_buffer)
+            before_seq = extensions.console_seq
             console_buffer.append('[Server] since-filter-test')
+            extensions.console_seq += 1
 
-        r = auth_client.get(f'/api/console/lines?since={before}')
+        r = auth_client.get(f'/api/console/lines?since={before_seq}')
         data = r.get_json()
         assert any('since-filter-test' in l for l in data['lines'])
 

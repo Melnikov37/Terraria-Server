@@ -144,6 +144,11 @@ def recreate_world():
     evil       = request.form.get('evil', '0')
     seed       = request.form.get('seed', '').strip()
 
+    world_file = os.path.join(cfg.WORLDS_DIR, worldname + '.wld')
+    if os.path.exists(world_file):
+        flash(f'World "{worldname}" already exists. Use Switch & Restart to load it, or choose a different name.', 'error')
+        return redirect(url_for('world.world'))
+
     try:
         try:
             container_action('stop', cfg)
@@ -151,21 +156,10 @@ def recreate_world():
             pass
         time.sleep(3)
 
-        worlds_dir = cfg.WORLDS_DIR
-        backup_dir = os.path.join(
-            cfg.TERRARIA_DIR, 'backups', datetime.now().strftime('%Y%m%d_%H%M%S')
-        )
-        os.makedirs(backup_dir, exist_ok=True)
-
-        for fname in os.listdir(worlds_dir):
-            src = os.path.join(worlds_dir, fname)
-            dst = os.path.join(backup_dir, fname)
-            if os.path.isfile(src):
-                shutil.move(src, dst)
-
+        os.makedirs(cfg.WORLDS_DIR, exist_ok=True)
         config_lines = [
             '# Terraria Server Configuration',
-            f'# Recreated: {datetime.now().isoformat()}',
+            f'# Created: {datetime.now().isoformat()}',
             '',
             f'world={cfg.TERRARIA_DIR}/worlds/{worldname}.wld',
             f'autocreate={size}',
@@ -191,7 +185,7 @@ def recreate_world():
             container_action('start', cfg)
         except Exception:
             pass
-        flash(f'World "{worldname}" will be created on server start. Old world backed up.', 'success')
+        flash(f'World "{worldname}" is being generated. Server restarting…', 'success')
     except Exception as e:
         flash(f'Error: {e}', 'error')
 

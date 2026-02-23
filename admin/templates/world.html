@@ -80,7 +80,8 @@
 <div class="card">
     <div class="card-title">Create New World</div>
     <form method="POST" action="{{ url_for('world.recreate_world') }}"
-          onsubmit="return confirm('This will DELETE the current world and create a new one. Old world will be backed up. Continue?');">
+          onsubmit="return confirm('Create new world and restart the server?');">
+
         <div class="grid grid-3">
             <div class="form-group">
                 <label>World Name</label>
@@ -118,9 +119,9 @@
             </div>
         </div>
         <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-            <button type="submit" class="btn btn-danger">Create New World</button>
+            <button type="submit" class="btn btn-primary">Create New World</button>
             <span style="color:var(--text-muted); font-size:0.875rem;">
-                Warning: current world will be backed up and deleted
+                Existing worlds are kept — use Switch and Restart to change the active world.
             </span>
         </div>
     </form>

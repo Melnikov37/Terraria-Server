@@ -1,6 +1,7 @@
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..decorators import login_required
+from .. import extensions
 from ..extensions import console_buffer, console_lock
 from ..services.server import get_server_type
 from ..services.screen import screen_send
@@ -21,8 +22,14 @@ def api_console_lines():
     since = int(request.args.get('since', 0))
     with console_lock:
         buf = list(console_buffer)
-    since = max(0, min(since, len(buf)))
-    return jsonify({'lines': buf[since:], 'total': len(buf)})
+        seq = extensions.console_seq
+    # seq is the total number of lines ever appended.
+    # The buffer holds the last len(buf) lines, so their sequence numbers
+    # run from (seq - len(buf)) to (seq - 1).
+    buf_start = seq - len(buf)
+    since = max(buf_start, min(since, seq))
+    offset = since - buf_start
+    return jsonify({'lines': buf[offset:], 'total': seq})
 
 
 @bp.route('/api/console/send', methods=['POST'])

@@ -1,6 +1,7 @@
 import logging
 import time
 
+from .. import extensions
 from ..extensions import console_buffer, console_lock, ANSI_ESCAPE, MAX_CONSOLE_LINES
 
 log = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ def start_console_poller(app):
                             continue
                         with console_lock:
                             console_buffer.append(line)
+                            extensions.console_seq += 1
                             if len(console_buffer) > MAX_CONSOLE_LINES:
                                 del console_buffer[0]
                         check_player_event(line, cfg, discord_notify)
@@ -110,6 +112,7 @@ def start_console_poller(app):
                             continue
                         with console_lock:
                             console_buffer.append(line)
+                            extensions.console_seq += 1
                             if len(console_buffer) > MAX_CONSOLE_LINES:
                                 del console_buffer[0]
                         check_player_event(line, cfg, discord_notify)
