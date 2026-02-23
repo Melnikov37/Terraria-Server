@@ -42,15 +42,27 @@ def start_console_poller(app):
                 import docker
                 client = docker.from_env()
                 container = client.containers.get(cfg.SERVER_CONTAINER)
+                # With tty:true the Docker streaming API emits raw PTY bytes,
+                # which may arrive one character at a time and use \r (carriage
+                # return) for in-place progress updates.  Buffer incomplete lines
+                # and apply \r semantics so each complete \n-terminated line is
+                # stored as a single entry in console_buffer.
+                pending = ''
                 for chunk in container.logs(
                     stream=True, follow=True, tail=200,
                     stdout=True, stderr=True,
                 ):
-                    chunk_text = ANSI_ESCAPE.sub(
+                    pending += ANSI_ESCAPE.sub(
                         '', chunk.decode('utf-8', errors='replace')
                     )
-                    for line in chunk_text.splitlines():
-                        line = line.strip()
+                    # Flush every complete \n-terminated line.
+                    while '\n' in pending:
+                        raw_line, pending = pending.split('\n', 1)
+                        # \r moves cursor to line start; keep only the text
+                        # after the last \r (what a real terminal would show).
+                        if '\r' in raw_line:
+                            raw_line = raw_line.rsplit('\r', 1)[-1]
+                        line = raw_line.strip()
                         if not line:
                             continue
                         with console_lock:
@@ -58,6 +70,9 @@ def start_console_poller(app):
                             if len(console_buffer) > MAX_CONSOLE_LINES:
                                 del console_buffer[0]
                         check_player_event(line, cfg, discord_notify)
+                    # Discard overwritten partial-line data (\r without \n).
+                    if '\r' in pending:
+                        pending = pending.rsplit('\r', 1)[-1]
             except Exception as exc:
                 log.warning('Docker log poller error (retry in 5s): %s', exc)
             finally:
