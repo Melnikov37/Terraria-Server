@@ -24,6 +24,7 @@ def server_control(action):
         flash('Invalid action', 'error')
         return redirect(url_for('dashboard.dashboard'))
 
+    client = None
     try:
         import docker
         client = docker.from_env()
@@ -44,5 +45,11 @@ def server_control(action):
 
     except Exception as e:
         flash(f'Error: {e}', 'error')
+    finally:
+        if client:
+            try:
+                client.close()
+            except Exception:
+                pass
 
     return redirect(url_for('dashboard.dashboard'))

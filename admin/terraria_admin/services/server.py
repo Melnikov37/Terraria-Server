@@ -90,7 +90,7 @@ def get_server_status(cfg):
             'server_type': server_type,
             'version': version,
             'port': int(read_serverconfig('port', cfg) or 7777),
-            'players': '?',
+            'players': None,
             'max_players': int(read_serverconfig('maxplayers', cfg) or 8),
             'world': read_serverconfig('worldname', cfg) or 'Unknown',
         }
@@ -101,7 +101,7 @@ def get_server_status(cfg):
         'server_type': server_type,
         'version': version,
         'port': int(read_serverconfig('port', cfg) or 7777),
-        'players': '?' if service_running else 0,
+        'players': None,
         'max_players': int(read_serverconfig('maxplayers', cfg) or 8),
         'world': read_serverconfig('worldname', cfg) or 'Unknown',
         'error': None if service_running else 'Server is stopped',

@@ -8,6 +8,7 @@ load_dotenv()
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'change-me-in-production')
     SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
     PERMANENT_SESSION_LIFETIME = 3600
     MAX_CONTENT_LENGTH = 256 * 1024 * 1024  # 256 MB
 

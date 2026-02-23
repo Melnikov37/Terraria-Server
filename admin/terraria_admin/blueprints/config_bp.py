@@ -55,6 +55,8 @@ def save_config():
     config_keys = ['worldname', 'maxplayers', 'port', 'password', 'difficulty', 'autocreate', 'motd']
 
     worldname = request.form.get('worldname', 'world1').strip().removesuffix('.wld')
+    # Strip any path separators and traversal sequences to prevent path injection
+    worldname = os.path.basename(worldname).replace('..', '').strip() or 'world1'
     lines = ['# Terraria Server Configuration', f'# Modified: {datetime.now().isoformat()}', '']
     lines.append(f"world={cfg.TERRARIA_DIR}/worlds/{worldname}.wld")
     lines.append(f"worldpath={cfg.TERRARIA_DIR}/worlds")
