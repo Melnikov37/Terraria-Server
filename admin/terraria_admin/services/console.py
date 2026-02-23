@@ -7,15 +7,24 @@ from ..extensions import console_buffer, console_lock, ANSI_ESCAPE, MAX_CONSOLE_
 log = logging.getLogger(__name__)
 
 
+def _extract_player_name(line, keyword):
+    """Extract player name from a log line like 'PlayerName has joined ...'."""
+    try:
+        parts = line.split(keyword)[0].strip().split()
+        return parts[-1] if parts else 'Someone'
+    except Exception:
+        return 'Someone'
+
+
 def check_player_event(line, cfg, discord_notify_fn):
     """Detect player join/leave in a log line and fire Discord notification."""
     lower = line.lower()
     if 'has joined' in lower:
-        name = line.split('has joined')[0].strip().split()[-1] if line.strip() else 'Someone'
+        name = _extract_player_name(line, 'has joined')
         discord_notify_fn(f'**{name}** joined the server', cfg, color=0x3fb950, event='join')
     elif 'has left' in lower or 'has disconnected' in lower:
         key = 'has left' if 'has left' in lower else 'has disconnected'
-        name = line.split(key)[0].strip().split()[-1] if line.strip() else 'Someone'
+        name = _extract_player_name(line, key)
         discord_notify_fn(f'**{name}** left the server', cfg, color=0xd29922, event='leave')
 
 
