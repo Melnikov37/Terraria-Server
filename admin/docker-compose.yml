@@ -46,7 +46,7 @@ services:
       - TERRARIA_DIR=/opt/terraria
       - SERVER_CONTAINER=terraria-server
       - SERVER_TYPE=${SERVER_TYPE:-tmodloader}
-      - MODS_DIR=${MODS_DIR:-/opt/terraria/tModLoader/Mods}
+      - MODS_DIR=${MODS_DIR:-/opt/terraria/.local/share/Terraria/tModLoader/Mods}
       - DISCORD_CONFIG=${DISCORD_CONFIG:-/opt/terraria/discord.json}
       # tModLoader (server mode) writes logs to /server/tModLoader-Logs/server.log
       # inside the server container. That directory is mounted at /opt/terraria/logs
