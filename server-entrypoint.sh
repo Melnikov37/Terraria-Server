@@ -9,10 +9,22 @@ WORLD_NAME="${WORLD_NAME:-TerrariaWorld}"
 DIFFICULTY="${DIFFICULTY:-0}"   # 0=Classic 1=Expert 2=Master 3=Journey
 AUTOCREATE="${AUTOCREATE:-2}"   # 1=Small 2=Medium 3=Large
 
-# Create persistent directories
-mkdir -p "${TERRARIA_DIR}/worlds" \
-         "${TERRARIA_DIR}/tModLoader/Mods" \
+# Create persistent directories on the shared volume.
+# Use the XDG path (.local/share/Terraria/tModLoader) so that the admin
+# panel default (MODS_DIR=/opt/terraria/.local/share/Terraria/tModLoader/Mods)
+# and tModLoader's own save directory agree on the same location.
+mkdir -p "${TERRARIA_DIR}/.local/share/Terraria/tModLoader/Mods" \
+         "${TERRARIA_DIR}/worlds" \
          "${TERRARIA_DIR}/backups"
+
+# Symlink tModLoader's default save path inside the container to the shared
+# volume so mods and enabled.json written by the admin panel are visible to
+# the server process (which runs as root and defaults to /root/.local/share).
+mkdir -p /root/.local/share/Terraria
+if [ ! -e /root/.local/share/Terraria/tModLoader ]; then
+    ln -s "${TERRARIA_DIR}/.local/share/Terraria/tModLoader" \
+          /root/.local/share/Terraria/tModLoader
+fi
 
 # Persist the baked-in tModLoader version so the admin panel can read it
 if [ -f /server/version.txt ]; then
