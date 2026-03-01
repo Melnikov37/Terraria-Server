@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 
 from .. import extensions
@@ -101,19 +102,19 @@ def start_console_poller(app):
         scan its parent directory for the newest *.log file so the poller
         automatically picks up whatever name the server is using today.
         """
-        if _os.path.isfile(path):
+        if os.path.isfile(path):
             return path
-        log_dir = _os.path.dirname(path)
-        if not _os.path.isdir(log_dir):
+        log_dir = os.path.dirname(path)
+        if not os.path.isdir(log_dir):
             return path  # nothing we can do yet
         try:
             candidates = [
-                _os.path.join(log_dir, f)
-                for f in _os.listdir(log_dir)
+                os.path.join(log_dir, f)
+                for f in os.listdir(log_dir)
                 if f.endswith('.log')
             ]
             if candidates:
-                return max(candidates, key=_os.path.getmtime)
+                return max(candidates, key=os.path.getmtime)
         except Exception:
             pass
         return path
