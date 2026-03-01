@@ -79,10 +79,12 @@ def get_version_info(cfg):
 
 def update_tmodloader(cfg):
     """Download and install the latest tModLoader release. Returns (success, message)."""
+    import logging
     import shutil
     import tempfile
-    import time
     import zipfile
+
+    log = logging.getLogger(__name__)
 
     try:
         resp = requests.get(
@@ -95,49 +97,69 @@ def update_tmodloader(cfg):
         latest_tag = release.get('tag_name', '')
         current = _stored_version(cfg)
 
+        log.info('tModLoader update: current=%s latest=%s', current, latest_tag)
+
         if latest_tag == current:
             return True, f'tModLoader is already up to date ({current})'
 
         assets = release.get('assets', [])
         zip_asset = next(
-            (a for a in assets
-             if a['name'] == 'tModLoader.zip' or
-             (a['name'].endswith('.zip') and 'source' not in a['name'].lower())),
+            (a for a in assets if a['name'] == 'tModLoader.zip'),
             None
         )
         if not zip_asset:
             return False, 'Could not find tModLoader.zip in the latest GitHub release'
 
         tml_dir = os.path.join(cfg.TERRARIA_DIR, 'tModLoader')
-        backup_dir = os.path.join(cfg.TERRARIA_DIR, f'tModLoader_bak_{current}')
-        if os.path.isdir(tml_dir) and not os.path.isdir(backup_dir):
-            shutil.copytree(tml_dir, backup_dir)
 
-        try:
-            container_action('stop', cfg)
-        except Exception:
-            pass
-        time.sleep(2)
-
+        # Download first while the server is still running, then swap atomically.
+        log.info('Downloading tModLoader %s from %s', latest_tag, zip_asset['browser_download_url'])
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = os.path.join(tmpdir, 'tModLoader.zip')
-            r = requests.get(zip_asset['browser_download_url'], stream=True, timeout=300)
+            r = requests.get(zip_asset['browser_download_url'], stream=True, timeout=480)
+            r.raise_for_status()
             with open(zip_path, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=65536):
                     f.write(chunk)
-            shutil.rmtree(tml_dir, ignore_errors=True)
-            os.makedirs(tml_dir, exist_ok=True)
+
+            log.info('Download complete, extracting...')
+            new_dir = os.path.join(tmpdir, 'extracted')
+            os.makedirs(new_dir)
             with zipfile.ZipFile(zip_path) as zf:
-                zf.extractall(tml_dir)
+                zf.extractall(new_dir)
+
+            # Stop server only after the download is ready — minimises downtime.
+            log.info('Stopping server container...')
+            try:
+                container_action('stop', cfg)
+            except Exception as e:
+                log.warning('Could not stop container: %s', e)
+
+            # Swap directories: rename old → backup, new → active.
+            if os.path.isdir(tml_dir):
+                backup_dir = os.path.join(cfg.TERRARIA_DIR, f'tModLoader_bak_{current}')
+                if not os.path.isdir(backup_dir):
+                    os.rename(tml_dir, backup_dir)
+                else:
+                    shutil.rmtree(tml_dir)
+
+            shutil.move(new_dir, tml_dir)
 
         with open(os.path.join(cfg.TERRARIA_DIR, '.server_version'), 'w') as f:
             f.write(latest_tag)
 
+        # Invalidate in-memory version cache so the UI reflects the new version immediately.
+        _version_cache.clear()
+
+        log.info('Starting server container with tModLoader %s...', latest_tag)
         try:
             container_action('start', cfg)
-        except Exception:
-            pass
+        except Exception as e:
+            log.error('Could not start container: %s', e)
+            return False, f'Update downloaded but failed to start server: {e}'
+
         return True, f'tModLoader updated: {current} → {latest_tag}. Server restarting.'
 
     except Exception as exc:
+        log.exception('tModLoader update failed')
         return False, f'Update failed: {exc}'
