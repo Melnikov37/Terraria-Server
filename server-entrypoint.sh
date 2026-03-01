@@ -85,7 +85,16 @@ if [ -f /server/LaunchUtils/BashUtils.sh ]; then
     echo "[terraria-entrypoint] EnvironmentFix sourced (LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-not set})"
 fi
 
-if [ -f /server/tModLoader.dll ]; then
+# Prefer an updated binary downloaded to the shared volume by the admin panel.
+# If /opt/terraria/tModLoader/tModLoader.dll exists it was placed there by the
+# in-app updater and takes precedence over the image-baked /server/tModLoader.dll.
+VOLUME_TML="${TERRARIA_DIR}/tModLoader/tModLoader.dll"
+
+if [ -f "$VOLUME_TML" ]; then
+    echo "[terraria-entrypoint] Binary: volume dotnet ${VOLUME_TML}"
+    cd "$(dirname "$VOLUME_TML")"
+    exec dotnet "$VOLUME_TML" -server "${ARGS[@]}" <&3
+elif [ -f /server/tModLoader.dll ]; then
     echo "[terraria-entrypoint] Binary: dotnet /server/tModLoader.dll"
     cd /server
     exec dotnet /server/tModLoader.dll -server "${ARGS[@]}" <&3
