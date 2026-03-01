@@ -26,8 +26,12 @@ if [ ! -e /root/.local/share/Terraria/tModLoader ]; then
           /root/.local/share/Terraria/tModLoader
 fi
 
-# Persist the baked-in tModLoader version so the admin panel can read it
-if [ -f /server/version.txt ]; then
+# Persist version for the admin panel.
+# Check for a volume-upgraded binary first: if it exists, update_tmodloader()
+# already wrote the correct version to .server_version — do NOT overwrite it
+# with the image-baked version or the admin panel will always show the old one.
+VOLUME_TML="${TERRARIA_DIR}/tModLoader/tModLoader.dll"
+if [ ! -f "$VOLUME_TML" ] && [ -f /server/version.txt ]; then
     cp /server/version.txt "${TERRARIA_DIR}/.server_version"
 fi
 
@@ -85,14 +89,16 @@ if [ -f /server/LaunchUtils/BashUtils.sh ]; then
     echo "[terraria-entrypoint] EnvironmentFix sourced (LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-not set})"
 fi
 
-# Prefer an updated binary downloaded to the shared volume by the admin panel.
-# If /opt/terraria/tModLoader/tModLoader.dll exists it was placed there by the
-# in-app updater and takes precedence over the image-baked /server/tModLoader.dll.
-VOLUME_TML="${TERRARIA_DIR}/tModLoader/tModLoader.dll"
-
+# VOLUME_TML already defined above (before the version-file logic).
 if [ -f "$VOLUME_TML" ]; then
     echo "[terraria-entrypoint] Binary: volume dotnet ${VOLUME_TML}"
-    cd "$(dirname "$VOLUME_TML")"
+    VOLUME_TML_DIR="$(dirname "$VOLUME_TML")"
+    # Prepend the volume binary's own native libs so they take priority over
+    # the image-baked /server/Libraries set by EnvironmentFix.sh above.
+    if [ -d "${VOLUME_TML_DIR}/Libraries" ]; then
+        export LD_LIBRARY_PATH="${VOLUME_TML_DIR}/Libraries:${LD_LIBRARY_PATH:-}"
+    fi
+    cd "$VOLUME_TML_DIR"
     exec dotnet "$VOLUME_TML" -server "${ARGS[@]}" <&3
 elif [ -f /server/tModLoader.dll ]; then
     echo "[terraria-entrypoint] Binary: dotnet /server/tModLoader.dll"
